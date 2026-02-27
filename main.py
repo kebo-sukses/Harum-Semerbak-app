@@ -32,6 +32,7 @@ from database.database import (
     init_db, insert_record, get_all_records, delete_record, import_from_excel,
 )
 from modules.pdf_engine import generate_pdf, generate_calibration_pdf
+from modules.calibration_preview import CalibrationPreview
 
 
 # ============================================================
@@ -67,6 +68,9 @@ class RitualFormApp(ctk.CTk):
             init_db()
         except RuntimeError as e:
             messagebox.showerror("Database Error", str(e))
+
+        # --- Referensi window preview kalibrasi ---
+        self._preview_window = None
 
         # --- Build UI ---
         self._build_input_frame()
@@ -395,7 +399,34 @@ class RitualFormApp(ctk.CTk):
             messagebox.showerror("Gagal Menghapus", str(e))
 
     def _on_calibration_print(self) -> None:
-        """Handler tombol Cetak Grid Kalibrasi."""
+        """Handler: Buka window preview visual kalibrasi."""
+        # Jika window sudah terbuka, fokuskan saja
+        if self._preview_window is not None and self._preview_window.winfo_exists():
+            self._preview_window.focus_force()
+            return
+
+        # Ambil offset dari entry utama
+        try:
+            ox = float(self.entry_offset_x.get() or "0.0")
+            oy = float(self.entry_offset_y.get() or "0.0")
+        except ValueError:
+            ox, oy = 0.0, 0.0
+
+        self._preview_window = CalibrationPreview(
+            self,
+            offset_x=ox,
+            offset_y=oy,
+            on_print_calibration=self._print_calibration_pdf,
+        )
+
+    def _print_calibration_pdf(self, offset_x: float, offset_y: float) -> None:
+        """Callback dari preview: sinkron offset lalu cetak PDF kalibrasi."""
+        # Sinkronkan offset kembali ke entry utama
+        self.entry_offset_x.delete(0, "end")
+        self.entry_offset_x.insert(0, f"{offset_x:.1f}")
+        self.entry_offset_y.delete(0, "end")
+        self.entry_offset_y.insert(0, f"{offset_y:.1f}")
+
         output_path = os.path.join(_OUTPUT_DIR, "calibration_grid.pdf")
         try:
             result_path = generate_calibration_pdf(output_path)
