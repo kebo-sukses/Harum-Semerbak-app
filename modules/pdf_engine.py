@@ -181,12 +181,14 @@ def generate_pdf(
     yang siap di-print di atas kertas formulir ritual merah F4.
 
     Args:
-        data: Dictionary berisi field formulir:
-            - nama_mendiang : str — Nama orang yang sudah meninggal (misal: "蔡氏先人")
-            - nama_pengirim : str — Nama pengirim / 陽上 (misal: "蔡明志")
-            - tahun_lunar   : str — Tahun lunar / 太歲 (misal: "乙巳")
-            - bulan_lunar   : str — Bulan lunar (misal: "正月")
-            - hari_lunar    : str — Hari lunar (misal: "十五")
+        data: Dictionary berisi field formulir (schema Excel Sheet 2):
+            - panggilan     : str — Sebutan Mandarin (母親許門, 父親, 祖父)
+            - nama_mandarin : str — Nama Mandarin mendiang (梁氏橋玉)
+            - dari          : str — Pengirim / hubungan (孝男, 外孫女敬奉)
+            - keterangan    : str — Info tambahan (合家敬奉) [opsional]
+            - tahun_lunar   : str — Tahun lunar / 太歲 (乙巳) [opsional]
+            - bulan_lunar   : str — Bulan lunar (正月) [opsional]
+            - hari_lunar    : str — Hari lunar (十五) [opsional]
         output_path: Path file PDF output.
         offset_x: Calibration offset horizontal (mm). Positif = geser ke kanan.
         offset_y: Calibration offset vertikal (mm). Positif = geser ke atas.
@@ -208,25 +210,29 @@ def generate_pdf(
         c = canvas.Canvas(output_path, pagesize=(page_w, page_h))
 
         # --------------------------------------------------------
-        # Ambil data dari dictionary
+        # Ambil data dari dictionary (schema Excel Sheet 2)
         # --------------------------------------------------------
-        nama_mendiang = data.get("nama_mendiang", "")
-        nama_pengirim = data.get("nama_pengirim", "")
+        panggilan = data.get("panggilan", "")         # 母親許門 / 父親 / 祖父
+        nama_mandarin = data.get("nama_mandarin", "") # 梁氏橋玉
+        dari = data.get("dari", "")                   # 孝男 / 外孫女敬奉
+        keterangan = data.get("keterangan", "")       # 合家敬奉
         tahun_lunar = data.get("tahun_lunar", "")
         bulan_lunar = data.get("bulan_lunar", "")
         hari_lunar = data.get("hari_lunar", "")
 
         # --------------------------------------------------------
-        # KOLOM KIRI: Nama Mendiang (ditulis vertikal)
+        # KOLOM KIRI: Panggilan + Nama Mandarin (ditulis vertikal)
+        # Gabungan: "母親許門 梁氏橋玉" — sebutan + nama mendiang
         # Posisi: X=68mm dari kiri, mulai Y=200mm dari bawah
         # Teks ditulis atas-ke-bawah satu karakter per baris
         # Jarak antar karakter: 12mm
-        # Font size: 14pt (ukuran sedang agar proporsional)
+        # Font size: 14pt
         # --------------------------------------------------------
+        mendiang_text = panggilan + nama_mandarin
         c.setFont(FONT_NAME, 14)
         _draw_vertical_text(
             c,
-            text=nama_mendiang,
+            text=mendiang_text,
             x_mm=68,                # X = 68mm dari kiri kertas
             y_start_mm=200,         # Y = 200mm dari bawah kertas (titik awal)
             font_size=14,
@@ -236,16 +242,19 @@ def generate_pdf(
         )
 
         # --------------------------------------------------------
-        # KOLOM TENGAH-KIRI: Nama Pengirim / 陽上 (ditulis vertikal)
+        # KOLOM TENGAH-KIRI: Dari / Pengirim + Keterangan (vertikal)
+        # Gabungan: "孝男" atau "外孫女敬奉" + opsional "合家敬奉"
         # Posisi: X=42mm dari kiri, mulai Y=170mm dari bawah
-        # Teks pengirim di bawah label "陽上"
         # Jarak antar karakter: 12mm
         # Font size: 14pt
         # --------------------------------------------------------
+        pengirim_text = dari
+        if keterangan:
+            pengirim_text += keterangan
         c.setFont(FONT_NAME, 14)
         _draw_vertical_text(
             c,
-            text=nama_pengirim,
+            text=pengirim_text,
             x_mm=42,                # X = 42mm dari kiri kertas
             y_start_mm=170,         # Y = 170mm dari bawah kertas
             font_size=14,
@@ -376,8 +385,10 @@ def generate_calibration_pdf(output_path: str) -> str:
 # ============================================================
 if __name__ == "__main__":
     test_data = {
-        "nama_mendiang": "蔡氏先人",
-        "nama_pengirim": "蔡明志",
+        "panggilan": "母親許門",
+        "nama_mandarin": "梁氏橋玉",
+        "dari": "孝男",
+        "keterangan": "合家敬奉",
         "tahun_lunar": "乙巳",
         "bulan_lunar": "正月",
         "hari_lunar": "十五",
