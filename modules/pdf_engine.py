@@ -103,9 +103,9 @@ def _register_font() -> None:
 # Layout formulir A4 (210×297mm, dari label.pdf):
 # ┌─────────────────────────────────────────┐  ← 297mm (atas)
 # │  [Header formulir dari label.pdf]        │
-# │  [陽上]       [太歲]                     │
-# │  [Panggilan + Mandarin]  [乙巳]          │
-# │              [年/月/日]                  │
+# │  [陽上]                                  │
+# │  [Panggilan + Mandarin]                  │
+# │  [Dari + Keterangan]                     │
 # └─────────────────────────────────────────┘  ← 0mm (bawah)
 #
 # Teks pada formulir ditulis VERTIKAL (atas ke bawah).
@@ -190,9 +190,6 @@ def generate_pdf(
             - nama_mandarin : str — Nama Mandarin mendiang (梁氏橋玉)
             - dari          : str — Pengirim / hubungan (孝男, 外孫女敬奉)
             - keterangan    : str — Info tambahan (合家敬奉) [opsional]
-            - tahun_lunar   : str — Tahun lunar / 太歲 (乙巳) [opsional]
-            - bulan_lunar   : str — Bulan lunar (正月) [opsional]
-            - hari_lunar    : str — Hari lunar (十五) [opsional]
         output_path: Path file PDF output.
         offset_x: Calibration offset horizontal (mm). Positif = geser ke kanan.
         offset_y: Calibration offset vertikal (mm). Positif = geser ke atas.
@@ -223,9 +220,6 @@ def generate_pdf(
         nama_mandarin = data.get("nama_mandarin", "") # 梁氏橋玉
         dari = data.get("dari", "")                   # 孝男 / 外孫女敬奉
         keterangan = data.get("keterangan", "")       # 合家敬奉
-        tahun_lunar = data.get("tahun_lunar", "")
-        bulan_lunar = data.get("bulan_lunar", "")
-        hari_lunar = data.get("hari_lunar", "")
 
         # --------------------------------------------------------
         # KOLOM KIRI: Panggilan + Nama Mandarin (ditulis vertikal)
@@ -266,57 +260,6 @@ def generate_pdf(
             y_start_mm=170,         # Y = 170mm dari bawah kertas
             font_size=14,
             line_spacing_mm=12,     # Jarak vertikal antar karakter = 12mm
-            offset_x=offset_x,
-            offset_y=offset_y,
-        )
-
-        # --------------------------------------------------------
-        # KOLOM KANAN: Tahun Lunar / 太歲 (ditulis vertikal)
-        # Posisi: X=155mm dari kiri, mulai Y=200mm dari bawah
-        # Misal: "乙巳" → dua karakter vertikal
-        # Jarak antar karakter: 14mm
-        # Font size: 16pt (sedikit lebih besar untuk tahun)
-        # --------------------------------------------------------
-        c.setFont(FONT_NAME, 16)
-        _draw_vertical_text(
-            c,
-            text=tahun_lunar,
-            x_mm=155,               # X = 155mm dari kiri kertas
-            y_start_mm=200,         # Y = 200mm dari bawah kertas
-            font_size=16,
-            line_spacing_mm=14,     # Jarak vertikal antar karakter = 14mm
-            offset_x=offset_x,
-            offset_y=offset_y,
-        )
-
-        # --------------------------------------------------------
-        # BARIS BAWAH: Bulan Lunar (horizontal)
-        # Posisi: X=140mm, Y=80mm dari bawah kertas
-        # Font size: 14pt
-        # --------------------------------------------------------
-        c.setFont(FONT_NAME, 14)
-        _draw_horizontal_text(
-            c,
-            text=bulan_lunar,
-            x_mm=140,               # X = 140mm dari kiri kertas
-            y_mm=80,                # Y = 80mm dari bawah kertas
-            font_size=14,
-            offset_x=offset_x,
-            offset_y=offset_y,
-        )
-
-        # --------------------------------------------------------
-        # BARIS BAWAH: Hari Lunar (horizontal)
-        # Posisi: X=170mm, Y=55mm dari bawah kertas
-        # Font size: 14pt
-        # --------------------------------------------------------
-        c.setFont(FONT_NAME, 14)
-        _draw_horizontal_text(
-            c,
-            text=hari_lunar,
-            x_mm=170,               # X = 170mm dari kiri kertas
-            y_mm=55,                # Y = 55mm dari bawah kertas
-            font_size=14,
             offset_x=offset_x,
             offset_y=offset_y,
         )
@@ -449,9 +392,6 @@ if __name__ == "__main__":
         "nama_mandarin": "梁氏橋玉",
         "dari": "孝男",
         "keterangan": "合家敬奉",
-        "tahun_lunar": "乙巳",
-        "bulan_lunar": "正月",
-        "hari_lunar": "十五",
     }
 
     out = generate_pdf(test_data, "test_output.pdf", offset_x=0, offset_y=0)

@@ -6,7 +6,7 @@ Framework: CustomTkinter (modern Tkinter)
 Fitur:
   1. Form Input  : Entry fields sesuai schema Excel Sheet 2
                     (Nama, Panggilan, Nama Mandarin, Penyebutan, Dari, Keluarga,
-                     Keterangan, Tahun/Bulan/Hari Lunar).
+                     Keterangan).
   2. Tabel Preview: Treeview menampilkan data tersimpan di SQLite.
   3. Tombol Cetak : Generate PDF layer transparan & buka otomatis.
   4. Import Excel : Import data dari file Excel (Sheet 2).
@@ -131,30 +131,12 @@ class RitualFormApp(ctk.CTk):
         self.entry_keluarga = ctk.CTkEntry(frame, width=180, placeholder_text="Ibu Kandung")
         self.entry_keluarga.grid(row=2, column=5, padx=(5, 10), pady=4, sticky="w")
 
-        # --- Baris 3: Keterangan & Tahun/Bulan/Hari Lunar ---
+        # --- Baris 3: Keterangan ---
         ctk.CTkLabel(frame, text="Keterangan:").grid(
-            row=3, column=0, padx=(10, 5), pady=4, sticky="e"
+            row=3, column=0, padx=(10, 5), pady=(4, 10), sticky="e"
         )
         self.entry_keterangan = ctk.CTkEntry(frame, width=180, placeholder_text="合家敬奉")
-        self.entry_keterangan.grid(row=3, column=1, padx=5, pady=4, sticky="w")
-
-        ctk.CTkLabel(frame, text="Tahun Lunar:").grid(
-            row=3, column=2, padx=(15, 5), pady=4, sticky="e"
-        )
-        self.entry_tahun = ctk.CTkEntry(frame, width=100, placeholder_text="乙巳")
-        self.entry_tahun.grid(row=3, column=3, padx=5, pady=4, sticky="w")
-
-        ctk.CTkLabel(frame, text="Bulan Lunar:").grid(
-            row=3, column=4, padx=(15, 5), pady=4, sticky="e"
-        )
-        self.entry_bulan = ctk.CTkEntry(frame, width=100, placeholder_text="正月")
-        self.entry_bulan.grid(row=3, column=5, padx=(5, 10), pady=4, sticky="w")
-
-        ctk.CTkLabel(frame, text="Hari Lunar:").grid(
-            row=4, column=0, padx=(10, 5), pady=(4, 10), sticky="e"
-        )
-        self.entry_hari = ctk.CTkEntry(frame, width=100, placeholder_text="十五")
-        self.entry_hari.grid(row=4, column=1, padx=5, pady=(4, 10), sticky="w")
+        self.entry_keterangan.grid(row=3, column=1, padx=5, pady=(4, 10), sticky="w")
 
     # ========================================================
     # Frame Kalibrasi
@@ -234,7 +216,7 @@ class RitualFormApp(ctk.CTk):
         columns = (
             "uuid", "nama", "panggilan", "mandarin",
             "penyebutan", "dari", "keluarga", "keterangan",
-            "tahun", "bulan", "hari", "tanggal",
+            "tanggal",
         )
         self.tree = ttk.Treeview(frame, columns=columns, show="headings", height=10)
 
@@ -247,9 +229,6 @@ class RitualFormApp(ctk.CTk):
         self.tree.heading("dari", text="Dari")
         self.tree.heading("keluarga", text="Keluarga")
         self.tree.heading("keterangan", text="Keterangan")
-        self.tree.heading("tahun", text="Tahun")
-        self.tree.heading("bulan", text="Bulan")
-        self.tree.heading("hari", text="Hari")
         self.tree.heading("tanggal", text="Dibuat")
 
         # Lebar kolom
@@ -261,9 +240,6 @@ class RitualFormApp(ctk.CTk):
         self.tree.column("dari", width=80, anchor="center")
         self.tree.column("keluarga", width=80, anchor="center")
         self.tree.column("keterangan", width=80, anchor="center")
-        self.tree.column("tahun", width=50, anchor="center")
-        self.tree.column("bulan", width=50, anchor="center")
-        self.tree.column("hari", width=50, anchor="center")
         self.tree.column("tanggal", width=110, anchor="center")
 
         # Scrollbar vertikal
@@ -290,9 +266,6 @@ class RitualFormApp(ctk.CTk):
         penyebutan = self.entry_penyebutan.get().strip()
         keluarga = self.entry_keluarga.get().strip()
         keterangan = self.entry_keterangan.get().strip()
-        tahun = self.entry_tahun.get().strip()
-        bulan = self.entry_bulan.get().strip()
-        hari = self.entry_hari.get().strip()
 
         # Validasi: Field wajib tidak boleh kosong
         if not all([panggilan, mandarin, dari]):
@@ -312,9 +285,6 @@ class RitualFormApp(ctk.CTk):
                 penyebutan=penyebutan,
                 keluarga=keluarga,
                 keterangan=keterangan,
-                tahun_lunar=tahun,
-                bulan_lunar=bulan,
-                hari_lunar=hari,
             )
             messagebox.showinfo("Berhasil", f"Data tersimpan.\nUUID: {record_uuid[:8]}...")
             self._clear_inputs()
@@ -333,7 +303,7 @@ class RitualFormApp(ctk.CTk):
         item = self.tree.item(selected[0])
         values = item["values"]
         # Kolom: 0=uuid, 1=nama, 2=panggilan, 3=mandarin, 4=penyebutan,
-        #         5=dari, 6=keluarga, 7=keterangan, 8=tahun, 9=bulan, 10=hari, 11=tanggal
+        #         5=dari, 6=keluarga, 7=keterangan, 8=tanggal
 
         data = {
             "nama": values[1],
@@ -343,9 +313,6 @@ class RitualFormApp(ctk.CTk):
             "dari": values[5],
             "keluarga": values[6],
             "keterangan": values[7],
-            "tahun_lunar": values[8],
-            "bulan_lunar": values[9],
-            "hari_lunar": values[10],
         }
 
         # Ambil offset kalibrasi
@@ -458,9 +425,6 @@ class RitualFormApp(ctk.CTk):
                         r["dari"],
                         r["keluarga"],
                         r["keterangan"],
-                        r["tahun_lunar"],
-                        r["bulan_lunar"],
-                        r["hari_lunar"],
                         r["created_at"],
                     ),
                 )
@@ -476,9 +440,6 @@ class RitualFormApp(ctk.CTk):
         self.entry_dari.delete(0, "end")
         self.entry_keluarga.delete(0, "end")
         self.entry_keterangan.delete(0, "end")
-        self.entry_tahun.delete(0, "end")
-        self.entry_bulan.delete(0, "end")
-        self.entry_hari.delete(0, "end")
 
     def _on_import_excel(self) -> None:
         """Handler tombol Import Excel: Pilih file .xlsx, import Sheet 2 ke DB."""

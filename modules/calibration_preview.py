@@ -45,33 +45,6 @@ FIELDS = [
         "spacing": 12,
         "color": "#2E7D32",
     },
-    {
-        "label": "Tahun Lunar",
-        "desc": "X=155, Y=200, vertikal ↓14mm",
-        "sample": "乙巳",
-        "x": 155, "y": 200,
-        "vertical": True,
-        "spacing": 14,
-        "color": "#C62828",
-    },
-    {
-        "label": "Bulan Lunar",
-        "desc": "X=140, Y=80, horizontal →",
-        "sample": "正月",
-        "x": 140, "y": 80,
-        "vertical": False,
-        "spacing": 6,
-        "color": "#6A1B9A",
-    },
-    {
-        "label": "Hari Lunar",
-        "desc": "X=170, Y=55, horizontal →",
-        "sample": "十五",
-        "x": 170, "y": 55,
-        "vertical": False,
-        "spacing": 6,
-        "color": "#E65100",
-    },
 ]
 
 

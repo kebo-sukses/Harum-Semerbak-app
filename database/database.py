@@ -228,9 +228,6 @@ def delete_record(record_uuid: str, db_path: str = _DB_PATH) -> bool:
 # ============================================================
 def import_from_excel(
     excel_path: str,
-    tahun_lunar: str = "",
-    bulan_lunar: str = "",
-    hari_lunar: str = "",
     db_path: str = _DB_PATH,
 ) -> int:
     """
@@ -240,9 +237,6 @@ def import_from_excel(
 
     Args:
         excel_path:  Path ke file .xlsx
-        tahun_lunar: Tahun lunar default untuk semua record.
-        bulan_lunar: Bulan lunar default.
-        hari_lunar:  Hari lunar default.
         db_path:     Path ke database.
 
     Returns:
@@ -281,9 +275,6 @@ def import_from_excel(
                 penyebutan=str(row[4] or "").strip() if len(row) > 4 else "",
                 keluarga=str(row[6] or "").strip() if len(row) > 6 else "",
                 keterangan=str(row[7] or "").strip() if len(row) > 7 else "",
-                tahun_lunar=tahun_lunar,
-                bulan_lunar=bulan_lunar,
-                hari_lunar=hari_lunar,
                 db_path=db_path,
             )
             count += 1
@@ -305,12 +296,7 @@ if __name__ == "__main__":
     # Test import dari Excel
     xlsx = r"e:\harum semerbak produk\segel data4.xlsx"
     if os.path.isfile(xlsx):
-        count = import_from_excel(
-            xlsx,
-            tahun_lunar="乙巳",
-            bulan_lunar="正月",
-            hari_lunar="十五",
-        )
+        count = import_from_excel(xlsx)
         print(f"Berhasil import {count} record dari Excel.")
 
     # Test get all
