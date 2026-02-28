@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
 """
-pdf_engine.py — Engine PDF (ReportLab) untuk mencetak layer transparan
-di atas kertas formulir ritual merah berukuran F4 (215mm × 330mm).
+pdf_engine.py — Engine PDF (ReportLab) untuk mencetak layer teks
+di atas template label.pdf pada kertas A4 (210mm × 297mm).
 
 Metode cetak:
-  PDF yang dihasilkan HANYA berisi teks hitam di posisi (X, Y) yang tepat.
-  Latar belakang transparan (tidak ada background putih).
-  Saat di-print di atas kertas formulir merah, teks jatuh di tempat yang benar.
+  1. Merge template label.pdf sebagai background layer.
+  2. Overlay teks hitam di posisi (X, Y) yang tepat.
+  Saat di-print, teks jatuh di tempat yang benar di atas formulir.
 
 Satuan:
   Semua koordinat dan ukuran menggunakan milimeter (mm).
@@ -22,13 +22,19 @@ from reportlab.lib.units import mm as _mm
 from reportlab.pdfgen import canvas
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
+from PyPDF2 import PdfReader, PdfWriter
 
 
 # ============================================================
-# Konstanta Ukuran Kertas F4 (dalam mm)
+# Konstanta Ukuran Kertas A4 (dalam mm)
 # ============================================================
-F4_WIDTH_MM = 215       # Lebar kertas F4 dalam milimeter
-F4_HEIGHT_MM = 330      # Tinggi kertas F4 dalam milimeter
+A4_WIDTH_MM = 210       # Lebar kertas A4 dalam milimeter
+A4_HEIGHT_MM = 297      # Tinggi kertas A4 dalam milimeter
+
+# Path template label.pdf
+_TEMPLATE_PATH = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "..", "assets", "label.pdf"
+)
 
 
 # ============================================================
@@ -94,13 +100,11 @@ def _register_font() -> None:
 #   X = jarak dari tepi kiri kertas
 #   Y = jarak dari tepi bawah kertas
 #
-# Layout formulir (dari gambar referensi):
-# ┌─────────────────────────────────────────┐  ← 330mm (atas)
-# │  [Header: 莫府化司內附]                   │
-# │  [Sub-header: 衣金庫服級錢]               │
-# │  [遞交 + 過]                             │
+# Layout formulir A4 (210×297mm, dari label.pdf):
+# ┌─────────────────────────────────────────┐  ← 297mm (atas)
+# │  [Header formulir dari label.pdf]        │
 # │  [陽上]       [太歲]                     │
-# │  [先/餘/門/姓/氏/...]   [乙巳]           │
+# │  [Panggilan + Mandarin]  [乙巳]          │
 # │              [年/月/日]                  │
 # └─────────────────────────────────────────┘  ← 0mm (bawah)
 #
@@ -177,8 +181,8 @@ def generate_pdf(
     offset_y: float = 0.0,
 ) -> str:
     """
-    Menghasilkan PDF layer transparan berisi teks hitam saja,
-    yang siap di-print di atas kertas formulir ritual merah F4.
+    Menghasilkan PDF dengan template label.pdf sebagai background
+    dan overlay teks, pada kertas A4 (210×297mm).
 
     Args:
         data: Dictionary berisi field formulir (schema Excel Sheet 2):
@@ -204,10 +208,13 @@ def generate_pdf(
         # Pastikan font terdaftar
         _register_font()
 
-        # Buat canvas dengan ukuran kertas F4
-        page_w = mm(F4_WIDTH_MM)    # Lebar halaman (points)
-        page_h = mm(F4_HEIGHT_MM)   # Tinggi halaman (points)
-        c = canvas.Canvas(output_path, pagesize=(page_w, page_h))
+        # Buat canvas overlay teks dengan ukuran kertas A4
+        page_w = mm(A4_WIDTH_MM)    # Lebar halaman (points)
+        page_h = mm(A4_HEIGHT_MM)   # Tinggi halaman (points)
+
+        # File sementara untuk overlay teks
+        overlay_path = output_path + ".overlay.tmp"
+        c = canvas.Canvas(overlay_path, pagesize=(page_w, page_h))
 
         # --------------------------------------------------------
         # Ambil data dari dictionary (schema Excel Sheet 2)
@@ -315,10 +322,25 @@ def generate_pdf(
         )
 
         # --------------------------------------------------------
-        # Simpan halaman dan tutup canvas
+        # Simpan overlay teks
         # --------------------------------------------------------
         c.showPage()
         c.save()
+
+        # --------------------------------------------------------
+        # Merge: template label.pdf (background) + overlay (teks)
+        # --------------------------------------------------------
+        _merge_template_and_overlay(
+            template_path=_TEMPLATE_PATH,
+            overlay_path=overlay_path,
+            output_path=output_path,
+            page_w=page_w,
+            page_h=page_h,
+        )
+
+        # Hapus file overlay sementara
+        if os.path.isfile(overlay_path):
+            os.remove(overlay_path)
 
         return os.path.abspath(output_path)
 
@@ -326,6 +348,44 @@ def generate_pdf(
         raise
     except Exception as e:
         raise RuntimeError(f"Gagal membuat PDF: {e}") from e
+
+
+# ============================================================
+# Helper: Merge template PDF + overlay teks
+# ============================================================
+def _merge_template_and_overlay(
+    template_path: str,
+    overlay_path: str,
+    output_path: str,
+    page_w: float,
+    page_h: float,
+) -> None:
+    """
+    Menggabungkan template label.pdf (background) dengan overlay teks.
+    Jika template tidak ditemukan, output hanya berisi overlay teks.
+
+    Args:
+        template_path: Path ke file template PDF.
+        overlay_path:  Path ke overlay teks PDF.
+        output_path:   Path file output gabungan.
+        page_w:        Lebar halaman (points).
+        page_h:        Tinggi halaman (points).
+    """
+    overlay_reader = PdfReader(overlay_path)
+    overlay_page = overlay_reader.pages[0]
+
+    if os.path.isfile(template_path):
+        template_reader = PdfReader(template_path)
+        base_page = template_reader.pages[0]
+        base_page.merge_page(overlay_page)
+        writer = PdfWriter()
+        writer.add_page(base_page)
+    else:
+        writer = PdfWriter()
+        writer.add_page(overlay_page)
+
+    with open(output_path, "wb") as f:
+        writer.write(f)
 
 
 # ============================================================
@@ -346,8 +406,8 @@ def generate_calibration_pdf(output_path: str) -> str:
     try:
         _register_font()
 
-        page_w = mm(F4_WIDTH_MM)
-        page_h = mm(F4_HEIGHT_MM)
+        page_w = mm(A4_WIDTH_MM)
+        page_h = mm(A4_HEIGHT_MM)
         c = canvas.Canvas(output_path, pagesize=(page_w, page_h))
 
         c.setFont(FONT_NAME, 6)
@@ -355,8 +415,8 @@ def generate_calibration_pdf(output_path: str) -> str:
         c.setFillColorRGB(0, 0, 0)
 
         # Gambar grid setiap 10mm
-        for x in range(0, F4_WIDTH_MM + 1, 10):         # 0, 10, 20, ... 210mm
-            for y in range(0, F4_HEIGHT_MM + 1, 10):     # 0, 10, 20, ... 330mm
+        for x in range(0, A4_WIDTH_MM + 1, 10):         # 0, 10, 20, ... 210mm
+            for y in range(0, A4_HEIGHT_MM + 1, 10):     # 0, 10, 20, ... 297mm
                 px = mm(x)      # Konversi X mm ke points
                 py = mm(y)      # Konversi Y mm ke points
 
@@ -369,7 +429,7 @@ def generate_calibration_pdf(output_path: str) -> str:
 
         # Judul halaman kalibrasi
         c.setFont(FONT_NAME, 10)
-        c.drawString(mm(10), mm(F4_HEIGHT_MM - 5), "CALIBRATION GRID — F4 (215×330mm) — Titik setiap 10mm")
+        c.drawString(mm(10), mm(A4_HEIGHT_MM - 5), "CALIBRATION GRID — A4 (210×297mm) — Titik setiap 10mm")
 
         c.showPage()
         c.save()

@@ -38,7 +38,7 @@ from modules.calibration_preview import CalibrationPreview
 # ============================================================
 # Konstanta UI
 # ============================================================
-APP_TITLE = "Formulir Ritual — Fill-in-the-Blanks (F4)"
+APP_TITLE = "Formulir Ritual — Fill-in-the-Blanks (A4)"
 APP_WIDTH = 1100
 APP_HEIGHT = 720
 
