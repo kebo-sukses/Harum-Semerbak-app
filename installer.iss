@@ -7,7 +7,7 @@
 ; ============================================================
 
 #define MyAppName "Formulir Ritual"
-#define MyAppVersion "1.1.0"
+#define MyAppVersion "1.2.0"
 #define MyAppPublisher "Harum Semerbak"
 #define MyAppExeName "FormulirRitual.exe"
 #define MyAppURL "https://github.com/kebo-sukses/Harum-Semerbak-app"

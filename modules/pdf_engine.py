@@ -246,13 +246,11 @@ def _draw_panel(c, data, x_offset, offset_x, offset_y):
     panggilan = data.get("panggilan", "")
     nama_mandarin = data.get("nama_mandarin", "")
     dari = data.get("dari", "")
-    keterangan = data.get("keterangan", "")
     keluarga = data.get("keluarga", "")
 
-    # --- 1. Kolom Dari + Keterangan (vertikal) ---
+    # --- 1. Kolom Dari (vertikal) ---
+    # Keterangan TIDAK ditampilkan di PDF (hanya tersimpan di database)
     dari_text = dari
-    if keterangan:
-        dari_text += keterangan
     c.setFont(FONT_NAME, FONT_MAIN)
     _draw_vertical_chars(
         c, dari_text,

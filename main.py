@@ -33,8 +33,8 @@ if _ROOT_DIR not in sys.path:
 
 from database.database import (
     init_db, insert_record, update_record, get_all_records, get_all_orders,
-    get_items_by_order, delete_record, delete_order,
-    import_from_excel, export_to_excel,
+    get_items_by_order, delete_record, delete_order, update_order_name,
+    bulk_delete_orders, import_from_excel, export_to_excel,
 )
 from modules.pdf_engine import generate_pdf_bytes
 from modules.pdf_preview import PDFPreviewWindow
@@ -45,7 +45,7 @@ from modules.dictionary_window import DictionaryWindow
 # ============================================================
 # Versi Aplikasi
 # ============================================================
-APP_VERSION = "1.1.0"
+APP_VERSION = "1.2.0"
 
 # ============================================================
 # Konstanta UI
@@ -341,6 +341,62 @@ def _reverse_lookup_dari(
 
 
 # ============================================================
+# Helper: Right-Click Context Menu (Copy, Cut, Paste)
+# ============================================================
+def _setup_context_menu(root_widget) -> None:
+    """Pasang context menu Copy/Cut/Paste ke semua Entry & Text widget."""
+
+    def _show_context_menu(event):
+        widget = event.widget
+        menu = tk.Menu(widget, tearoff=0)
+        # Cek apakah widget bisa diedit
+        is_readonly = False
+        try:
+            state = str(widget.cget("state"))
+            is_readonly = state in ("readonly", "disabled")
+        except (tk.TclError, AttributeError):
+            pass
+
+        try:
+            has_selection = widget.selection_get()
+        except (tk.TclError, AttributeError):
+            has_selection = ""
+
+        if has_selection:
+            menu.add_command(
+                label="📋 Copy", accelerator="Ctrl+C",
+                command=lambda: widget.event_generate("<<Copy>>"),
+            )
+        if has_selection and not is_readonly:
+            menu.add_command(
+                label="✂️ Cut", accelerator="Ctrl+X",
+                command=lambda: widget.event_generate("<<Cut>>"),
+            )
+        if not is_readonly:
+            menu.add_command(
+                label="📌 Paste", accelerator="Ctrl+V",
+                command=lambda: widget.event_generate("<<Paste>>"),
+            )
+            menu.add_separator()
+            menu.add_command(
+                label="🔘 Select All", accelerator="Ctrl+A",
+                command=lambda: (
+                    widget.select_range(0, "end")
+                    if isinstance(widget, (tk.Entry, ttk.Entry))
+                    else widget.tag_add("sel", "1.0", "end")
+                ),
+            )
+
+        if menu.index("end") is not None:
+            menu.tk_popup(event.x_root, event.y_root)
+        menu.grab_release()
+
+    # Bind ke semua entry/text widget via class bindings
+    for cls in ("Entry", "TEntry", "Text"):
+        root_widget.bind_class(cls, "<Button-3>", _show_context_menu)
+
+
+# ============================================================
 # Widget Kustom: Dropdown dengan scroll
 # ============================================================
 class ScrollableDropdown(ctk.CTkFrame):
@@ -500,6 +556,12 @@ class RitualFormApp(ctk.CTk):
 
         # --- State edit ---
         self._editing_uuid: str | None = None
+
+        # --- State bulk-delete (checkbox per order) ---
+        self._bulk_check_vars: dict[str, tk.BooleanVar] = {}
+
+        # --- Aktifkan context menu klik kanan (Copy/Cut/Paste) ---
+        _setup_context_menu(self)
 
         # --- Build UI ---
         self._build_input_frame()
@@ -981,6 +1043,14 @@ class RitualFormApp(ctk.CTk):
         )
         self._btn_collapse_all.pack(side="right", padx=(4, 0))
 
+        # Tombol Bulk Delete
+        self._btn_bulk_delete = ctk.CTkButton(
+            toolbar, text="🗑️ Hapus Terpilih", width=140,
+            fg_color="#E53935", hover_color="#B71C1C",
+            command=self._on_bulk_delete,
+        )
+        self._btn_bulk_delete.pack(side="right", padx=(4, 0))
+
         # Kolom tabel
         columns = (
             "uuid", "panggilan", "mandarin",
@@ -1051,12 +1121,15 @@ class RitualFormApp(ctk.CTk):
         if not row_iid or not col_id:
             return
 
-        # Kolom aksi = kolom terakhir (#9 karena #0 = tree column)
-        if col_id != "#9":
+        # Klik pada parent (order group → nama pemesan)
+        if str(row_iid).startswith("order_"):
+            # Klik di kolom #0 (tree column / nama pemesan) → rename
+            if col_id == "#0":
+                self._on_rename_order(row_iid)
             return
 
-        # Abaikan klik pada parent (order group)
-        if str(row_iid).startswith("order_"):
+        # Kolom aksi = kolom terakhir (#9 karena #0 = tree column)
+        if col_id != "#9":
             return
 
         # Pilih baris yang diklik
@@ -1078,6 +1151,105 @@ class RitualFormApp(ctk.CTk):
             self._on_delete()
         else:
             self._on_print()
+
+    def _on_rename_order(self, row_iid: str) -> None:
+        """Handler rename nama pemesan: Tampilkan dialog untuk mengubah nama."""
+        order_uuid = str(row_iid).replace("order_", "")
+
+        # Ambil nama saat ini dari treeview
+        item = self.tree.item(row_iid)
+        current_text = item.get("text", "")
+        current_name = (
+            current_text
+            .replace("\U0001f4c1 ", "")
+            .replace("\u270f\ufe0f ", "")
+            .split("  (")[0]
+            .strip()
+        )
+
+        # Dialog input nama baru
+        dialog = ctk.CTkInputDialog(
+            title="Ubah Nama Pemesan",
+            text=f"Nama saat ini: {current_name}\n\nMasukkan nama baru:",
+        )
+        new_name = dialog.get_input()
+
+        if not new_name or not new_name.strip():
+            return
+        new_name = new_name.strip()
+
+        if new_name == current_name:
+            return
+
+        try:
+            result = update_order_name(order_uuid, new_name)
+            if result.get("merged"):
+                messagebox.showinfo(
+                    "Berhasil (Digabung)",
+                    f"Nama pemesan diubah ke '{new_name}'.\n"
+                    f"Item digabungkan dengan grup yang sudah ada.",
+                )
+            else:
+                messagebox.showinfo(
+                    "Berhasil",
+                    f"Nama pemesan berhasil diubah menjadi '{new_name}'.",
+                )
+            self._refresh_table()
+        except RuntimeError as e:
+            messagebox.showerror("Gagal Mengubah Nama", str(e))
+
+    def _on_bulk_delete(self) -> None:
+        """Handler tombol Hapus Terpilih: Hapus semua grup pemesan yang terpilih."""
+        # Ambil semua order yang terpilih di Treeview
+        selected = self.tree.selection()
+        order_uuids = []
+        order_names = []
+
+        for iid in selected:
+            if str(iid).startswith("order_"):
+                uuid = str(iid).replace("order_", "")
+                order_uuids.append(uuid)
+                # Ambil nama untuk konfirmasi
+                item_text = self.tree.item(iid).get("text", "")
+                name = (
+                    item_text
+                    .replace("\U0001f4c1 ", "")
+                    .replace("\u270f\ufe0f ", "")
+                    .split("  (")[0]
+                    .strip()
+                )
+                order_names.append(name)
+
+        if not order_uuids:
+            messagebox.showwarning(
+                "Tidak Ada Pilihan",
+                "Pilih satu atau lebih grup pemesan (baris 📁) di tabel.\n\n"
+                "Tips: Tahan Ctrl dan klik beberapa grup pemesan\n"
+                "untuk memilih lebih dari satu.",
+            )
+            return
+
+        # Konfirmasi
+        names_list = "\n".join(f"  • {n}" for n in order_names)
+        confirm = messagebox.askyesno(
+            "Konfirmasi Hapus Massal",
+            f"Apakah Anda yakin ingin menghapus {len(order_uuids)} grup pemesan?\n\n"
+            f"{names_list}\n\n"
+            f"Semua item di dalamnya juga akan dihapus!\n"
+            f"Tindakan ini tidak dapat dibatalkan.",
+        )
+        if not confirm:
+            return
+
+        try:
+            deleted = bulk_delete_orders(order_uuids)
+            messagebox.showinfo(
+                "Berhasil",
+                f"{deleted} grup pemesan beserta semua item-nya berhasil dihapus.",
+            )
+            self._refresh_table()
+        except RuntimeError as e:
+            messagebox.showerror("Gagal Menghapus", str(e))
 
     def _on_save(self) -> None:
         """Handler tombol Simpan/Update: Validasi input lalu simpan ke database."""
@@ -1163,7 +1335,7 @@ class RitualFormApp(ctk.CTk):
         parent_iid = self.tree.parent(sel_iid)
         parent_item = self.tree.item(parent_iid)
         parent_text = parent_item.get("text", "")
-        nama_pemesan = parent_text.replace("\U0001f4c1 ", "").split("  (")[0].strip()
+        nama_pemesan = parent_text.replace("\U0001f4c1 ", "").replace("✏️ ", "").split("  (")[0].strip()
 
         data = {
             "nama": nama_pemesan,
@@ -1300,7 +1472,7 @@ class RitualFormApp(ctk.CTk):
         parent_iid = self.tree.parent(sel_iid)
         parent_item = self.tree.item(parent_iid)
         parent_text = parent_item.get("text", "")
-        nama_pemesan = parent_text.replace("📁 ", "").split("  (")[0].strip()
+        nama_pemesan = parent_text.replace("📁 ", "").replace("✏️ ", "").split("  (")[0].strip()
 
         # Muat data ke form
         self._load_record_to_form(
@@ -1410,6 +1582,9 @@ class RitualFormApp(ctk.CTk):
         for item in self.tree.get_children():
             self.tree.delete(item)
 
+        # Reset bulk-delete checkboxes
+        self._bulk_check_vars.clear()
+
         try:
             orders = get_all_orders()
             for order in orders:
@@ -1431,14 +1606,14 @@ class RitualFormApp(ctk.CTk):
                     if not has_mandarin_match:
                         continue
 
-                # Parent row = nama pemesan
+                # Parent row = nama pemesan (with edit icon)
                 order_iid = f"order_{order['uuid']}"
                 item_count = order["item_count"]
                 self.tree.insert(
                     "",
                     "end",
                     iid=order_iid,
-                    text=f"📁 {display_name}  ({item_count} item)",
+                    text=f"📁 ✏️ {display_name}  ({item_count} item)",
                     values=("", "", "", "", "", "", "", "", ""),
                     open=True,
                     tags=("order",),
@@ -1729,6 +1904,10 @@ class RitualFormApp(ctk.CTk):
         if not filepath:
             return
 
+        # Bersihkan memori sebelum import (mencegah crash setelah lama idle)
+        import gc
+        gc.collect()
+
         try:
             count = import_from_excel(filepath)
             messagebox.showinfo(
@@ -1744,6 +1923,14 @@ class RitualFormApp(ctk.CTk):
             )
         except RuntimeError as e:
             messagebox.showerror("Gagal Import", str(e))
+        except Exception as e:
+            messagebox.showerror(
+                "Gagal Import",
+                f"Terjadi kesalahan tak terduga:\n{type(e).__name__}: {e}\n\n"
+                "Coba restart aplikasi dan ulangi import.",
+            )
+        finally:
+            gc.collect()
 
     def _on_generate_template(self) -> None:
         """Handler tombol Template: Generate file template Excel import."""

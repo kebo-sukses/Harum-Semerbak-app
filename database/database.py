@@ -295,6 +295,97 @@ def delete_order(order_uuid: str, db_path: str = _DB_PATH) -> bool:
         conn.close()
 
 
+def update_order_name(
+    order_uuid: str, new_name: str, db_path: str = _DB_PATH,
+) -> dict:
+    """
+    Rename nama pemesan pada order.
+
+    Jika sudah ada order lain dengan nama yang sama, semua item dari
+    order lama akan dipindah ke order yang sudah ada, lalu order lama dihapus.
+
+    Args:
+        order_uuid: UUID order yang akan di-rename.
+        new_name:   Nama baru.
+
+    Returns:
+        dict: {"success": True, "merged": bool}
+    """
+    new_name = new_name.strip()
+    if not new_name:
+        raise RuntimeError("Nama pemesan tidak boleh kosong.")
+    try:
+        conn = _get_connection(db_path)
+        cursor = conn.cursor()
+
+        # Cek apakah sudah ada order dengan nama yang sama
+        cursor.execute(
+            "SELECT id FROM orders WHERE LOWER(TRIM(nama)) = LOWER(TRIM(?)) "
+            "AND uuid != ?;",
+            (new_name, order_uuid),
+        )
+        existing = cursor.fetchone()
+
+        merged = False
+        if existing:
+            # Pindahkan semua item ke order yang sudah ada
+            target_id = existing["id"]
+            cursor.execute(
+                "SELECT id FROM orders WHERE uuid = ?;", (order_uuid,),
+            )
+            old_row = cursor.fetchone()
+            if old_row:
+                cursor.execute(
+                    "UPDATE ritual_items SET order_id = ? WHERE order_id = ?;",
+                    (target_id, old_row["id"]),
+                )
+                cursor.execute(
+                    "DELETE FROM orders WHERE uuid = ?;", (order_uuid,),
+                )
+                merged = True
+        else:
+            cursor.execute(
+                "UPDATE orders SET nama = ? WHERE uuid = ?;",
+                (new_name, order_uuid),
+            )
+        conn.commit()
+        return {"success": True, "merged": merged}
+    except sqlite3.Error as e:
+        raise RuntimeError(f"Gagal rename order: {e}") from e
+    finally:
+        conn.close()
+
+
+def bulk_delete_orders(
+    order_uuids: list[str], db_path: str = _DB_PATH,
+) -> int:
+    """
+    Hapus beberapa order sekaligus beserta semua item-nya.
+
+    Args:
+        order_uuids: List UUID order yang akan dihapus.
+
+    Returns:
+        int: Jumlah order yang berhasil dihapus.
+    """
+    if not order_uuids:
+        return 0
+    try:
+        conn = _get_connection(db_path)
+        cursor = conn.cursor()
+        placeholders = ",".join("?" for _ in order_uuids)
+        cursor.execute(
+            f"DELETE FROM orders WHERE uuid IN ({placeholders});",
+            order_uuids,
+        )
+        conn.commit()
+        return cursor.rowcount
+    except sqlite3.Error as e:
+        raise RuntimeError(f"Gagal bulk delete orders: {e}") from e
+    finally:
+        conn.close()
+
+
 # ============================================================
 # CRUD — Ritual Items
 # ============================================================
@@ -806,11 +897,12 @@ def import_from_excel(
     try:
         import openpyxl
     except ImportError as e:
-        raise RuntimeError(
+        raise ImportError(
             "Library openpyxl belum terinstal. "
             "Jalankan: pip install openpyxl"
         ) from e
 
+    wb = None
     try:
         wb = openpyxl.load_workbook(excel_path, read_only=True)
 
@@ -837,7 +929,8 @@ def import_from_excel(
             convert_panggilan = None  # type: ignore[assignment]
             convert_dari = None  # type: ignore[assignment]
 
-        count = 0
+        # Kumpulkan semua data dulu, baru insert ke DB
+        rows_data: list[dict] = []
         for row in ws.iter_rows(min_row=2, values_only=True):
             nama = str(row[1] or "").strip() if len(row) > 1 else ""
             panggilan_raw = str(row[2] or "").strip() if len(row) > 2 else ""
@@ -886,23 +979,52 @@ def import_from_excel(
             if not penyebutan and nama_mandarin:
                 penyebutan = _auto_penyebutan_from_mandarin(nama_mandarin)
 
+            rows_data.append({
+                "panggilan": panggilan,
+                "nama_mandarin": nama_mandarin,
+                "dari": dari,
+                "nama": nama,
+                "penyebutan": penyebutan,
+                "keluarga": keluarga,
+                "keterangan": keterangan,
+            })
+
+        # Tutup workbook SEGERA setelah selesai baca
+        wb.close()
+        wb = None
+
+        # Import baru: insert ke DB setelah file Excel ditutup
+        import gc
+        gc.collect()
+
+        count = 0
+        for rd in rows_data:
             insert_record(
-                panggilan=panggilan,
-                nama_mandarin=nama_mandarin,
-                dari=dari,
-                nama=nama,
-                penyebutan=penyebutan,
-                keluarga=keluarga,
-                keterangan=keterangan,
+                panggilan=rd["panggilan"],
+                nama_mandarin=rd["nama_mandarin"],
+                dari=rd["dari"],
+                nama=rd["nama"],
+                penyebutan=rd["penyebutan"],
+                keluarga=rd["keluarga"],
+                keterangan=rd["keterangan"],
                 db_path=db_path,
             )
             count += 1
 
-        wb.close()
         return count
 
     except (OSError, KeyError) as e:
         raise RuntimeError(f"Gagal membaca file Excel: {e}") from e
+    except RuntimeError:
+        raise
+    except Exception as e:
+        raise RuntimeError(f"Gagal import Excel: {e}") from e
+    finally:
+        if wb is not None:
+            try:
+                wb.close()
+            except Exception:
+                pass
 
 
 # ============================================================
