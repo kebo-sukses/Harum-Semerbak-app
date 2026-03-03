@@ -39,12 +39,13 @@ from database.database import (
 from modules.pdf_engine import generate_pdf_bytes
 from modules.pdf_preview import PDFPreviewWindow
 from modules.updater import UpdateChecker
+from modules.dictionary_window import DictionaryWindow
 
 
 # ============================================================
 # Versi Aplikasi
 # ============================================================
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.1.0"
 
 # ============================================================
 # Konstanta UI
@@ -512,6 +513,13 @@ class RitualFormApp(ctk.CTk):
         self.after(1500, self._check_for_updates)
 
     # ========================================================
+    # Kamus Mini
+    # ========================================================
+    def _open_dictionary(self) -> None:
+        """Buka jendela Kamus Mini Aksara Mandarin."""
+        DictionaryWindow(master=self)
+
+    # ========================================================
     # Auto-Update
     # ========================================================
     def _check_for_updates(self) -> None:
@@ -920,6 +928,12 @@ class RitualFormApp(ctk.CTk):
 
         ctk.CTkButton(
             frame, text="�🔄 Refresh", width=120, command=self._refresh_table
+        ).pack(side="right", padx=8, pady=10)
+
+        ctk.CTkButton(
+            frame, text="📖 Kamus", width=120,
+            fg_color="#1565C0", hover_color="#0D47A1",
+            command=self._open_dictionary,
         ).pack(side="right", padx=8, pady=10)
 
     # ========================================================
@@ -1353,7 +1367,7 @@ class RitualFormApp(ctk.CTk):
             self._on_dari_selected(dari_disp)
         else:
             # Fallback: gunakan mode manual dan isi entry dengan value asli
-            clean = dari_mandarin.removesuffix(" 敬奉 叩首")
+            clean = dari_mandarin.replace("敬奉", "").replace("叩首", "").strip()
             self.combo_dari.set(_DARI_MANUAL)
             self._on_dari_selected(_DARI_MANUAL)
             self._entry_dari_manual.insert(0, clean)
@@ -1392,7 +1406,7 @@ class RitualFormApp(ctk.CTk):
         self._populate_table(search_text)
 
     def _populate_table(self, search_text: str = "") -> None:
-        """Isi tabel Treeview, opsional difilter berdasarkan nama pemesan."""
+        """Isi tabel Treeview, opsional difilter berdasarkan nama pemesan / nama mandarin."""
         for item in self.tree.get_children():
             self.tree.delete(item)
 
@@ -1401,9 +1415,21 @@ class RitualFormApp(ctk.CTk):
             for order in orders:
                 display_name = order["nama"] or "(tanpa nama)"
 
-                # Filter: lewati pemesan yang tidak cocok dengan pencarian
-                if search_text and search_text not in display_name.lower():
-                    continue
+                # Cek apakah nama pemesan cocok dengan pencarian
+                name_match = (not search_text
+                              or search_text in display_name.lower())
+
+                # Ambil items untuk cek nama mandarin jika nama pemesan tidak cocok
+                items = get_items_by_order(order["uuid"])
+
+                if not name_match:
+                    # Cek apakah ada item yang nama mandarin-nya cocok
+                    has_mandarin_match = any(
+                        search_text in (r.get("nama_mandarin", "") or "").lower()
+                        for r in items
+                    )
+                    if not has_mandarin_match:
+                        continue
 
                 # Parent row = nama pemesan
                 order_iid = f"order_{order['uuid']}"
@@ -1419,8 +1445,14 @@ class RitualFormApp(ctk.CTk):
                 )
 
                 # Child rows = ritual items
-                items = get_items_by_order(order["uuid"])
                 for idx, r in enumerate(items):
+                    # Jika pencarian aktif dan nama pemesan tidak cocok,
+                    # hanya tampilkan item yang nama mandarin-nya cocok
+                    if search_text and not name_match:
+                        mandarin = (r.get("nama_mandarin", "") or "").lower()
+                        if search_text not in mandarin:
+                            continue
+
                     tag = "item_even" if idx % 2 == 0 else "item_odd"
                     self.tree.insert(
                         order_iid,
@@ -1605,10 +1637,8 @@ class RitualFormApp(ctk.CTk):
         """Callback saat user mengetik di entry manual Dari."""
         text = self._entry_dari_manual.get().strip()
         self._lbl_dari_mandarin.configure(text=text)
-        if text:
-            self._lbl_dari_suffix.pack(side="left")
-        else:
-            self._lbl_dari_suffix.pack_forget()
+        # Mode manual: tidak tampilkan suffix 敬奉 叩首
+        self._lbl_dari_suffix.pack_forget()
 
     def _update_dari_preview(self, choice: str) -> None:
         """Update preview mandarin Dari sesuai pilihan + gender + nomor."""
@@ -1644,12 +1674,9 @@ class RitualFormApp(ctk.CTk):
         """Ambil aksara Mandarin Dari dari dropdown + gender + nomor + suffix."""
         choice = self.combo_dari.get()
 
-        # Jika mode manual, ambil dari entry manual
+        # Jika mode manual, ambil dari entry manual (tanpa suffix)
         if choice == _DARI_MANUAL:
-            mandarin = self._entry_dari_manual.get().strip()
-            if mandarin:
-                mandarin = f"{mandarin} 敬奉 叩首"
-            return mandarin
+            return self._entry_dari_manual.get().strip()
 
         if choice in _DARI_GENDERED and self._dari_gender_var.get() == "P":
             mandarin = _DARI_MAP_P.get(choice, "")

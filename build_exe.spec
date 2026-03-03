@@ -33,6 +33,7 @@ a = Analysis(
         (os.path.join('modules', 'pdf_engine.py'), 'modules'),
         (os.path.join('modules', 'pdf_preview.py'), 'modules'),
         (os.path.join('modules', 'updater.py'), 'modules'),
+        (os.path.join('modules', 'dictionary_window.py'), 'modules'),
     ] + ctk_datas,
     hiddenimports=[
         'customtkinter',
