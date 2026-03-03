@@ -38,7 +38,13 @@ from database.database import (
 )
 from modules.pdf_engine import generate_pdf_bytes
 from modules.pdf_preview import PDFPreviewWindow
+from modules.updater import UpdateChecker
 
+
+# ============================================================
+# Versi Aplikasi
+# ============================================================
+APP_VERSION = "1.0.0"
 
 # ============================================================
 # Konstanta UI
@@ -501,6 +507,138 @@ class RitualFormApp(ctk.CTk):
 
         # --- Load data awal ke tabel ---
         self._refresh_table()
+
+        # --- Cek update di background ---
+        self.after(1500, self._check_for_updates)
+
+    # ========================================================
+    # Auto-Update
+    # ========================================================
+    def _check_for_updates(self) -> None:
+        """Cek GitHub Releases untuk versi baru (background thread)."""
+        self._updater = UpdateChecker(APP_VERSION)
+        self._updater.check_in_background(
+            on_update_available=lambda ver, name, notes: self.after(
+                0, self._show_update_dialog, ver, name, notes
+            ),
+        )
+
+    def _show_update_dialog(self, version: str, name: str, notes: str) -> None:
+        """Tampilkan dialog notifikasi update."""
+        dialog = ctk.CTkToplevel(self)
+        dialog.title("Update Tersedia")
+        dialog.geometry("480x360")
+        dialog.resizable(False, False)
+        dialog.transient(self)
+        dialog.grab_set()
+        dialog.lift()
+        dialog.focus_force()
+
+        # Center dialog
+        dialog.update_idletasks()
+        x = self.winfo_x() + (self.winfo_width() - 480) // 2
+        y = self.winfo_y() + (self.winfo_height() - 360) // 2
+        dialog.geometry(f"+{x}+{y}")
+
+        # Icon & heading
+        ctk.CTkLabel(
+            dialog, text="🔄  Update Tersedia!",
+            font=ctk.CTkFont(size=18, weight="bold"),
+        ).pack(padx=20, pady=(20, 5))
+
+        ctk.CTkLabel(
+            dialog,
+            text=f"Versi baru: v{version}  (saat ini: v{APP_VERSION})",
+            font=ctk.CTkFont(size=13),
+            text_color="gray",
+        ).pack(padx=20, pady=(0, 5))
+
+        if name:
+            ctk.CTkLabel(
+                dialog, text=name,
+                font=ctk.CTkFont(size=14, weight="bold"),
+            ).pack(padx=20, pady=(5, 2))
+
+        # Release notes (scrollable)
+        if notes:
+            notes_box = ctk.CTkTextbox(dialog, height=120, wrap="word")
+            notes_box.pack(padx=20, pady=(5, 10), fill="x")
+            notes_box.insert("1.0", notes)
+            notes_box.configure(state="disabled")
+
+        # Progress bar (hidden initially)
+        progress_frame = ctk.CTkFrame(dialog, fg_color="transparent")
+        progress_frame.pack(padx=20, fill="x")
+        progress_bar = ctk.CTkProgressBar(progress_frame)
+        progress_label = ctk.CTkLabel(
+            progress_frame, text="", font=ctk.CTkFont(size=11),
+        )
+
+        # Buttons
+        btn_frame = ctk.CTkFrame(dialog, fg_color="transparent")
+        btn_frame.pack(padx=20, pady=(10, 15), fill="x")
+
+        btn_later = ctk.CTkButton(
+            btn_frame, text="Nanti", width=120,
+            fg_color="gray", hover_color="#666",
+            command=dialog.destroy,
+        )
+        btn_later.pack(side="left", padx=(0, 10))
+
+        def _start_download():
+            btn_download.configure(state="disabled", text="Mengunduh...")
+            btn_later.configure(state="disabled")
+            progress_bar.pack(fill="x", pady=(0, 3))
+            progress_bar.set(0)
+            progress_label.pack()
+
+            def _on_progress(downloaded, total):
+                if total > 0:
+                    pct = downloaded / total
+                    mb_dl = downloaded / (1024 * 1024)
+                    mb_tot = total / (1024 * 1024)
+                    self.after(0, lambda: progress_bar.set(pct))
+                    self.after(
+                        0,
+                        lambda d=mb_dl, t=mb_tot: progress_label.configure(
+                            text=f"{d:.1f} MB / {t:.1f} MB"
+                        ),
+                    )
+
+            def _on_done(installer_path):
+                self.after(0, lambda: _launch_installer(installer_path))
+
+            def _on_error(msg):
+                self.after(
+                    0,
+                    lambda: (
+                        messagebox.showerror("Update Gagal", msg, parent=dialog),
+                        btn_download.configure(state="normal", text="Download & Install"),
+                        btn_later.configure(state="normal"),
+                    ),
+                )
+
+            self._updater.download_and_install(
+                progress_callback=_on_progress,
+                on_done=_on_done,
+                on_error=_on_error,
+            )
+
+        def _launch_installer(path):
+            dialog.destroy()
+            messagebox.showinfo(
+                "Update",
+                "Installer sudah didownload.\n"
+                "Aplikasi akan ditutup dan installer akan berjalan.",
+            )
+            UpdateChecker.launch_installer_and_exit(path)
+
+        btn_download = ctk.CTkButton(
+            btn_frame, text="Download & Install", width=180,
+            fg_color="#1976D2", hover_color="#1565C0",
+            command=_start_download,
+        )
+        btn_download.pack(side="right")
 
     # ========================================================
     # Frame Input

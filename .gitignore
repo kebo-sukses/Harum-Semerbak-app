@@ -22,3 +22,6 @@ venv/
 # OS
 Thumbs.db
 .DS_Store
+
+# Installer output
+installer_output/
