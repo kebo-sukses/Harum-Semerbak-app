@@ -1123,8 +1123,8 @@ class RitualFormApp(ctk.CTk):
 
         # Klik pada parent (order group → nama pemesan)
         if str(row_iid).startswith("order_"):
-            # Klik di kolom #0 (tree column / nama pemesan) → rename
-            if col_id == "#0":
+            # Klik di kolom aksi (#9) → rename
+            if col_id == "#9":
                 self._on_rename_order(row_iid)
             return
 
@@ -1162,7 +1162,6 @@ class RitualFormApp(ctk.CTk):
         current_name = (
             current_text
             .replace("\U0001f4c1 ", "")
-            .replace("\u270f\ufe0f ", "")
             .split("  (")[0]
             .strip()
         )
@@ -1214,7 +1213,6 @@ class RitualFormApp(ctk.CTk):
                 name = (
                     item_text
                     .replace("\U0001f4c1 ", "")
-                    .replace("\u270f\ufe0f ", "")
                     .split("  (")[0]
                     .strip()
                 )
@@ -1335,7 +1333,7 @@ class RitualFormApp(ctk.CTk):
         parent_iid = self.tree.parent(sel_iid)
         parent_item = self.tree.item(parent_iid)
         parent_text = parent_item.get("text", "")
-        nama_pemesan = parent_text.replace("\U0001f4c1 ", "").replace("✏️ ", "").split("  (")[0].strip()
+        nama_pemesan = parent_text.replace("\U0001f4c1 ", "").split("  (")[0].strip()
 
         data = {
             "nama": nama_pemesan,
@@ -1472,7 +1470,7 @@ class RitualFormApp(ctk.CTk):
         parent_iid = self.tree.parent(sel_iid)
         parent_item = self.tree.item(parent_iid)
         parent_text = parent_item.get("text", "")
-        nama_pemesan = parent_text.replace("📁 ", "").replace("✏️ ", "").split("  (")[0].strip()
+        nama_pemesan = parent_text.replace("📁 ", "").split("  (")[0].strip()
 
         # Muat data ke form
         self._load_record_to_form(
@@ -1613,8 +1611,8 @@ class RitualFormApp(ctk.CTk):
                     "",
                     "end",
                     iid=order_iid,
-                    text=f"📁 ✏️ {display_name}  ({item_count} item)",
-                    values=("", "", "", "", "", "", "", "", ""),
+                    text=f"📁 {display_name}  ({item_count} item)",
+                    values=("", "", "", "", "", "", "", "", "✏️ Ubah Nama"),
                     open=True,
                     tags=("order",),
                 )
