@@ -1,16 +1,21 @@
 # -*- coding: utf-8 -*-
 """
-pdf_engine.py — Engine PDF (ReportLab) untuk mencetak layer teks
-di atas template label.pdf pada kertas A4 (210mm × 297mm).
+pdf_engine.py -- Engine PDF (ReportLab) untuk mencetak layer teks
+di atas template label.pdf pada kertas US Letter (612x792pt).
 
-Metode cetak:
-  1. Merge template label.pdf sebagai background layer.
-  2. Overlay teks hitam di posisi (X, Y) yang tepat.
-  Saat di-print, teks jatuh di tempat yang benar di atas formulir.
+Layout Output:
+  - Dua panel identik (kiri & kanan) pada satu halaman.
+  - Setiap panel berisi data mendiang dari database:
+    * Kolom Panggilan + Nama Mandarin (vertikal)
+    * Kolom Dari / pengirim (vertikal)
+    * Keluarga (horizontal, bahasa Indonesia)
+    * Prefix otomatis berdasarkan panggilan
+    * Teks ritual tetap
+    * Label tanggal + zodiak
 
-Satuan:
-  Semua koordinat dan ukuran menggunakan milimeter (mm).
-  Konversi ke points (pt) dilakukan secara internal oleh helper `mm()`.
+Koordinat:
+  Semua posisi dalam POINTS (pt), origin = kiri-bawah (ReportLab).
+  Dipetakan dari analisis new.pdf reference output.
 
 Fitur Calibration Offset:
   Parameter offset_x dan offset_y menggeser SELURUH teks secara global
@@ -18,6 +23,9 @@ Fitur Calibration Offset:
 """
 
 import os
+import io
+from datetime import datetime
+
 from reportlab.lib.units import mm as _mm
 from reportlab.pdfgen import canvas
 from reportlab.pdfbase import pdfmetrics
@@ -26,10 +34,10 @@ from PyPDF2 import PdfReader, PdfWriter
 
 
 # ============================================================
-# Konstanta Ukuran Kertas A4 (dalam mm)
+# Konstanta Ukuran Kertas (US Letter, sesuai template label.pdf)
 # ============================================================
-A4_WIDTH_MM = 210       # Lebar kertas A4 dalam milimeter
-A4_HEIGHT_MM = 297      # Tinggi kertas A4 dalam milimeter
+PAGE_WIDTH_PT = 612.0    # 215.9mm
+PAGE_HEIGHT_PT = 792.0   # 279.4mm
 
 # Path template label.pdf
 _TEMPLATE_PATH = os.path.join(
@@ -38,8 +46,7 @@ _TEMPLATE_PATH = os.path.join(
 
 
 # ============================================================
-# Helper: Konversi mm ke points (ReportLab menggunakan points)
-# 1 mm = 2.834645669 points
+# Helper: Konversi mm ke points
 # ============================================================
 def mm(value: float) -> float:
     """Konversi milimeter ke points untuk ReportLab."""
@@ -50,30 +57,33 @@ def mm(value: float) -> float:
 # Registrasi Font Mandarin
 # ============================================================
 _FONT_REGISTERED = False
-FONT_NAME = "SimSun"
+FONT_NAME = "HanyiSentyPagoda"
 
-# Daftar path font yang mungkin tersimpan di sistem
+# Font utama: HanyiSentyPagoda (sama dengan label new.pdf)
+# Fallback: SimSun, Microsoft YaHei, KaiTi
 _FONT_CANDIDATES = [
-    # Path Windows standar
+    # Font utama di assets/fonts project
+    os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "..", "assets", "fonts", "HanyiSentyPagoda.ttf",
+    ),
+    # Fallback: font sistem Windows
     r"C:\Windows\Fonts\simsun.ttc",
     r"C:\Windows\Fonts\msyh.ttc",
-    # Path relatif di folder assets/fonts project
-    os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assets", "fonts", "simsun.ttc"),
-    os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assets", "fonts", "kaiti.ttf"),
+    os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "..", "assets", "fonts", "simsun.ttc",
+    ),
+    os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "..", "assets", "fonts", "kaiti.ttf",
+    ),
 ]
 
 
 def _register_font() -> None:
-    """
-    Mendaftarkan font Mandarin ke ReportLab.
-    Mencari dari daftar kandidat path font.
-    Hanya dieksekusi sekali (singleton pattern).
-
-    Raises:
-        FileNotFoundError: Jika tidak ada font Mandarin yang ditemukan.
-    """
+    """Mendaftarkan font Mandarin ke ReportLab (singleton)."""
     global _FONT_REGISTERED
-
     if _FONT_REGISTERED:
         return
 
@@ -87,198 +97,283 @@ def _register_font() -> None:
                 continue
 
     raise FileNotFoundError(
-        "Font Mandarin tidak ditemukan!\n"
-        "Letakkan file 'simsun.ttc' atau 'kaiti.ttf' di folder assets/fonts/\n"
+        "Font tidak ditemukan!\n"
+        "Letakkan file HanyiSentyPagoda.ttf di folder assets/fonts/\n"
         f"Atau pastikan font tersedia di: {_FONT_CANDIDATES}"
     )
 
 
 # ============================================================
-# Peta Koordinat Teks pada Formulir Ritual (dalam mm)
-#
-# Koordinat diukur dari KIRI BAWAH kertas (origin ReportLab).
-#   X = jarak dari tepi kiri kertas
-#   Y = jarak dari tepi bawah kertas
-#
-# Layout formulir A4 (210×297mm, dari label.pdf):
-# ┌─────────────────────────────────────────┐  ← 297mm (atas)
-# │  [Header formulir dari label.pdf]        │
-# │  [陽上]                                  │
-# │  [Panggilan + Mandarin]                  │
-# │  [Dari + Keterangan]                     │
-# └─────────────────────────────────────────┘  ← 0mm (bawah)
-#
-# Teks pada formulir ditulis VERTIKAL (atas ke bawah).
-# Kita cetak per-karakter secara vertikal dengan jarak tetap.
+# Posisi Teks pada Layout Dual-Panel (dalam POINTS)
 # ============================================================
 
+# Offset X antara panel kiri dan kanan
+PANEL_OFFSET = 262.56    # ~92.6mm
 
-def _draw_vertical_text(
-    c: canvas.Canvas,
-    text: str,
-    x_mm: float,
-    y_start_mm: float,
-    font_size: float,
-    line_spacing_mm: float,
-    offset_x: float,
-    offset_y: float,
-) -> None:
+# --- Kolom Dari (vertikal, atas-ke-bawah) ---
+DARI_X = 68.28            # ~24.1mm dari kiri
+DARI_Y_START = 366.48     # ~129.3mm dari bawah (karakter pertama)
+DARI_SPACING = 28.68      # ~10.1mm per karakter
+
+# --- Kolom Panggilan + Nama Mandarin (vertikal) ---
+MENDIANG_X = 165.48       # ~58.4mm dari kiri
+MENDIANG_Y_START = 338.04 # ~119.2mm dari bawah (karakter pertama)
+MENDIANG_SPACING = 28.68  # ~10.1mm per karakter
+
+# --- Prefix (di atas kolom mendiang) ---
+PREFIX_X = 166.56          # ~58.8mm
+PREFIX_Y_START = 394.32    # ~139.1mm
+PREFIX_SPACING = 25.20     # ~8.9mm
+
+# --- Teks ritual tetap (di bawah kolom mendiang) ---
+RITUAL_X = 165.48          # sama dengan mendiang
+RITUAL_Y_START = 176.64    # ~62.3mm
+RITUAL_SPACING = 28.68     # sama dengan mendiang
+
+# --- Keluarga / Indonesian label (horizontal, dekat bawah) ---
+KELUARGA_X = 162.84        # ~57.4mm
+KELUARGA_Y = 19.32         # ~6.8mm dari bawah
+
+# --- Zodiak tahun ---
+ZODIAC_X = 259.68          # ~91.6mm
+ZODIAC_STEM_Y = 367.32     # posisi stem
+ZODIAC_BRANCH_Y = 329.64   # posisi branch
+
+# --- Label tanggal tetap ---
+DATE_X = 259.68            # ~91.6mm
+YEAR_LABEL_Y = 250.20      # nian
+MONTH_LABEL_Y = 176.28     # yue
+DAY_LABEL_Y = 108.48       # ri
+
+# --- Tanda segel ---
+FENG_X = 257.76            # ~90.9mm
+FENG_Y = 44.28             # ~15.6mm
+FU_X = 63.36               # ~22.3mm
+FU_Y = 44.28               # ~15.6mm
+
+# --- Ukuran font (setelah penyesuaian skala dari PDF asli) ---
+FONT_MAIN = 16.8           # Panggilan, Mandarin, Dari
+FONT_PREFIX = 14.9         # Prefix
+FONT_KELUARGA = 9.3        # Label keluarga (Indonesia)
+FONT_SEAL = 26.0           # Segel
+FONT_DATE = 22.3           # Zodiak & label tanggal
+
+# Teks ritual tetap (selalu sama)
+_RITUAL_TEXT = "\u4e00\u4f4d\u6b63\u9b42\u6536\u9886"
+
+# Karakter penanda gender mendiang untuk deteksi prefix
+_FEMALE_INDICATORS = frozenset(
+    "\u6bcd\u59d1\u5b38\u59bb\u5ab3\u59d0\u59b9\u5ac2\u59e8"
+)
+
+# Tabel zodiak China
+_HEAVENLY_STEMS = "\u7532\u4e59\u4e19\u4e01\u620a\u5df1\u5e9a\u8f9b\u58ec\u7678"
+_EARTHLY_BRANCHES = (
+    "\u5b50\u4e11\u5bc5\u536f\u8fb0\u5df3\u5348\u672a\u7533\u9149\u620c\u4ea5"
+)
+
+
+# ============================================================
+# Helper Functions
+# ============================================================
+def _get_ancestor_prefix(panggilan: str) -> str:
+    """Tentukan prefix mendiang berdasarkan karakter panggilan.
+
+    Returns:
+        Prefix perempuan atau laki-laki.
     """
-    Menggambar teks secara vertikal (atas ke bawah), satu karakter per baris.
+    for char in panggilan:
+        if char in _FEMALE_INDICATORS:
+            return "\u5148\u59a3"
+    return "\u5148\u8003"
+
+
+def _get_zodiac_year(year=None):
+    """Hitung Heavenly Stem + Earthly Branch untuk tahun tertentu.
 
     Args:
-        c:               Canvas ReportLab.
-        text:            String yang akan ditulis vertikal.
-        x_mm:            Posisi X (mm) dari kiri kertas.
-        y_start_mm:      Posisi Y (mm) karakter pertama dari bawah kertas.
-        font_size:       Ukuran font dalam points.
-        line_spacing_mm: Jarak antar karakter secara vertikal (mm).
-        offset_x:        Calibration offset X global (mm).
-        offset_y:        Calibration offset Y global (mm).
+        year: Tahun Masehi. Default = tahun sekarang.
+
+    Returns:
+        Tuple (stem, branch).
     """
-    for i, char in enumerate(text):
-        # X final = posisi dasar + offset kalibrasi
-        final_x = mm(x_mm + offset_x)
-        # Y final = posisi awal - (indeks × jarak) + offset kalibrasi
-        # Dikurangi karena teks turun ke bawah (Y berkurang)
-        final_y = mm(y_start_mm + offset_y) - mm(i * line_spacing_mm)
-        c.drawString(final_x, final_y, char)
+    if year is None:
+        year = datetime.now().year
+    stem = _HEAVENLY_STEMS[(year - 4) % 10]
+    branch = _EARTHLY_BRANCHES[(year - 4) % 12]
+    return stem, branch
 
 
-def _draw_horizontal_text(
-    c: canvas.Canvas,
-    text: str,
-    x_mm: float,
-    y_mm: float,
-    font_size: float,
-    offset_x: float,
-    offset_y: float,
-) -> None:
-    """
-    Menggambar teks secara horizontal (kiri ke kanan) — untuk tanggal, dll.
+def _draw_vertical_chars(
+    c,
+    text,
+    x_pt,
+    y_start_pt,
+    spacing_pt,
+    offset_x_pt=0.0,
+    offset_y_pt=0.0,
+):
+    """Gambar karakter vertikal (atas ke bawah), skip spasi.
 
     Args:
-        c:        Canvas ReportLab.
-        text:     String yang akan ditulis horizontal.
-        x_mm:     Posisi X (mm) dari kiri kertas.
-        y_mm:     Posisi Y (mm) dari bawah kertas.
-        font_size: Ukuran font dalam points.
-        offset_x: Calibration offset X global (mm).
-        offset_y: Calibration offset Y global (mm).
+        c:            Canvas ReportLab.
+        text:         String yang akan ditulis.
+        x_pt:         Posisi X (points).
+        y_start_pt:   Posisi Y karakter pertama (points).
+        spacing_pt:   Jarak antar posisi karakter (points).
+        offset_x_pt:  Calibration offset X (points).
+        offset_y_pt:  Calibration offset Y (points).
     """
-    final_x = mm(x_mm + offset_x)      # X + offset kalibrasi
-    final_y = mm(y_mm + offset_y)       # Y + offset kalibrasi
-    c.drawString(final_x, final_y, text)
+    idx = 0
+    for char in text:
+        if char != " ":
+            final_x = x_pt + offset_x_pt
+            final_y = y_start_pt - idx * spacing_pt + offset_y_pt
+            c.drawString(final_x, final_y, char)
+        idx += 1
+
+
+def _draw_panel(c, data, x_offset, offset_x, offset_y):
+    """Gambar semua teks untuk satu panel.
+
+    Args:
+        c:         Canvas ReportLab.
+        data:      Dictionary berisi field formulir.
+        x_offset:  Offset X panel (0 = kiri, PANEL_OFFSET = kanan).
+        offset_x:  Calibration offset X (points).
+        offset_y:  Calibration offset Y (points).
+    """
+    panggilan = data.get("panggilan", "")
+    nama_mandarin = data.get("nama_mandarin", "")
+    dari = data.get("dari", "")
+    keterangan = data.get("keterangan", "")
+    keluarga = data.get("keluarga", "")
+
+    # --- 1. Kolom Dari + Keterangan (vertikal) ---
+    dari_text = dari
+    if keterangan:
+        dari_text += keterangan
+    c.setFont(FONT_NAME, FONT_MAIN)
+    _draw_vertical_chars(
+        c, dari_text,
+        x_pt=DARI_X + x_offset,
+        y_start_pt=DARI_Y_START,
+        spacing_pt=DARI_SPACING,
+        offset_x_pt=offset_x,
+        offset_y_pt=offset_y,
+    )
+
+    # --- 2. Prefix ---
+    prefix = _get_ancestor_prefix(panggilan)
+    c.setFont(FONT_NAME, FONT_PREFIX)
+    _draw_vertical_chars(
+        c, prefix,
+        x_pt=PREFIX_X + x_offset,
+        y_start_pt=PREFIX_Y_START,
+        spacing_pt=PREFIX_SPACING,
+        offset_x_pt=offset_x,
+        offset_y_pt=offset_y,
+    )
+
+    # --- 3. Kolom Panggilan + Nama Mandarin (vertikal) ---
+    mendiang_text = panggilan + nama_mandarin
+    c.setFont(FONT_NAME, FONT_MAIN)
+    _draw_vertical_chars(
+        c, mendiang_text,
+        x_pt=MENDIANG_X + x_offset,
+        y_start_pt=MENDIANG_Y_START,
+        spacing_pt=MENDIANG_SPACING,
+        offset_x_pt=offset_x,
+        offset_y_pt=offset_y,
+    )
+
+    # --- 4. Teks ritual 一位正魂收领 ---
+    # TIDAK digambar karena sudah ada di template label.pdf (warna merah)
+
+    # --- 5. Keluarga (horizontal, bahasa Indonesia) ---
+    if keluarga:
+        short_keluarga = keluarga.split(" (")[0]
+        short_keluarga = short_keluarga.replace(" Kandung", "")
+        c.setFont(FONT_NAME, FONT_KELUARGA)
+        c.drawString(
+            KELUARGA_X + x_offset + offset_x,
+            KELUARGA_Y + offset_y,
+            short_keluarga,
+        )
+
+    # --- 6. Zodiak tahun ---
+    stem, branch = _get_zodiac_year()
+    c.setFont(FONT_NAME, FONT_DATE)
+    c.drawString(
+        ZODIAC_X + x_offset + offset_x,
+        ZODIAC_STEM_Y + offset_y,
+        stem,
+    )
+    c.drawString(
+        ZODIAC_X + x_offset + offset_x,
+        ZODIAC_BRANCH_Y + offset_y,
+        branch,
+    )
+
+    # --- 7, 8: 年月日, 封附, 一位正魂收领 ---
+    # TIDAK digambar karena sudah ada di template label.pdf (warna merah)
 
 
 # ============================================================
 # Fungsi Utama: Generate PDF
 # ============================================================
 def generate_pdf(
-    data: dict,
-    output_path: str,
-    offset_x: float = 0.0,
-    offset_y: float = 0.0,
-) -> str:
-    """
-    Menghasilkan PDF dengan template label.pdf sebagai background
-    dan overlay teks, pada kertas A4 (210×297mm).
+    data,
+    output_path,
+    offset_x=0.0,
+    offset_y=0.0,
+):
+    """Menghasilkan PDF dual-panel dengan template label.pdf.
 
     Args:
-        data: Dictionary berisi field formulir (schema Excel Sheet 2):
-            - panggilan     : str — Sebutan Mandarin (母親許門, 父親, 祖父)
-            - nama_mandarin : str — Nama Mandarin mendiang (梁氏橋玉)
-            - dari          : str — Pengirim / hubungan (孝男, 外孫女敬奉)
-            - keterangan    : str — Info tambahan (合家敬奉) [opsional]
+        data: Dictionary berisi field formulir:
+            - panggilan     : str
+            - nama_mandarin : str
+            - dari          : str
+            - keterangan    : str (opsional)
+            - keluarga      : str
         output_path: Path file PDF output.
-        offset_x: Calibration offset horizontal (mm). Positif = geser ke kanan.
-        offset_y: Calibration offset vertikal (mm). Positif = geser ke atas.
+        offset_x: Calibration offset horizontal (mm). Positif = geser kanan.
+        offset_y: Calibration offset vertikal (mm). Positif = geser atas.
 
     Returns:
         str: Path absolut file PDF yang dihasilkan.
-
-    Raises:
-        FileNotFoundError: Jika font Mandarin tidak ditemukan.
-        Exception: Jika terjadi error saat membuat PDF.
     """
     try:
-        # Pastikan font terdaftar
         _register_font()
 
-        # Buat canvas overlay teks dengan ukuran kertas A4
-        page_w = mm(A4_WIDTH_MM)    # Lebar halaman (points)
-        page_h = mm(A4_HEIGHT_MM)   # Tinggi halaman (points)
+        # Konversi offset dari mm ke points
+        ox_pt = mm(offset_x)
+        oy_pt = mm(offset_y)
 
-        # File sementara untuk overlay teks
         overlay_path = output_path + ".overlay.tmp"
-        c = canvas.Canvas(overlay_path, pagesize=(page_w, page_h))
-
-        # --------------------------------------------------------
-        # Ambil data dari dictionary (schema Excel Sheet 2)
-        # --------------------------------------------------------
-        panggilan = data.get("panggilan", "")         # 母親許門 / 父親 / 祖父
-        nama_mandarin = data.get("nama_mandarin", "") # 梁氏橋玉
-        dari = data.get("dari", "")                   # 孝男 / 外孫女敬奉
-        keterangan = data.get("keterangan", "")       # 合家敬奉
-
-        # --------------------------------------------------------
-        # KOLOM KIRI: Panggilan + Nama Mandarin (ditulis vertikal)
-        # Gabungan: "母親許門 梁氏橋玉" — sebutan + nama mendiang
-        # Posisi: X=68mm dari kiri, mulai Y=200mm dari bawah
-        # Teks ditulis atas-ke-bawah satu karakter per baris
-        # Jarak antar karakter: 12mm
-        # Font size: 14pt
-        # --------------------------------------------------------
-        mendiang_text = panggilan + nama_mandarin
-        c.setFont(FONT_NAME, 14)
-        _draw_vertical_text(
-            c,
-            text=mendiang_text,
-            x_mm=68,                # X = 68mm dari kiri kertas
-            y_start_mm=200,         # Y = 200mm dari bawah kertas (titik awal)
-            font_size=14,
-            line_spacing_mm=12,     # Jarak vertikal antar karakter = 12mm
-            offset_x=offset_x,
-            offset_y=offset_y,
+        c = canvas.Canvas(
+            overlay_path,
+            pagesize=(PAGE_WIDTH_PT, PAGE_HEIGHT_PT),
         )
 
-        # --------------------------------------------------------
-        # KOLOM TENGAH-KIRI: Dari / Pengirim + Keterangan (vertikal)
-        # Gabungan: "孝男" atau "外孫女敬奉" + opsional "合家敬奉"
-        # Posisi: X=42mm dari kiri, mulai Y=170mm dari bawah
-        # Jarak antar karakter: 12mm
-        # Font size: 14pt
-        # --------------------------------------------------------
-        pengirim_text = dari
-        if keterangan:
-            pengirim_text += keterangan
-        c.setFont(FONT_NAME, 14)
-        _draw_vertical_text(
-            c,
-            text=pengirim_text,
-            x_mm=42,                # X = 42mm dari kiri kertas
-            y_start_mm=170,         # Y = 170mm dari bawah kertas
-            font_size=14,
-            line_spacing_mm=12,     # Jarak vertikal antar karakter = 12mm
-            offset_x=offset_x,
-            offset_y=offset_y,
+        # Gambar panel KIRI
+        _draw_panel(c, data, x_offset=0.0, offset_x=ox_pt, offset_y=oy_pt)
+
+        # Gambar panel KANAN (identik, geser X)
+        _draw_panel(
+            c, data, x_offset=PANEL_OFFSET,
+            offset_x=ox_pt, offset_y=oy_pt,
         )
 
-        # --------------------------------------------------------
-        # Simpan overlay teks
-        # --------------------------------------------------------
         c.showPage()
         c.save()
 
-        # --------------------------------------------------------
         # Merge: template label.pdf (background) + overlay (teks)
-        # --------------------------------------------------------
         _merge_template_and_overlay(
             template_path=_TEMPLATE_PATH,
             overlay_path=overlay_path,
             output_path=output_path,
-            page_w=page_w,
-            page_h=page_h,
         )
 
         # Hapus file overlay sementara
@@ -293,27 +388,80 @@ def generate_pdf(
         raise RuntimeError(f"Gagal membuat PDF: {e}") from e
 
 
+def generate_pdf_bytes(
+    data,
+    offset_x=0.0,
+    offset_y=0.0,
+):
+    """Menghasilkan PDF dual-panel sebagai bytes (in-memory).
+
+    Sama seperti generate_pdf() tapi mengembalikan bytes tanpa
+    menyimpan ke file. Cocok untuk preview dan cetak langsung.
+
+    Args:
+        data: Dictionary berisi field formulir.
+        offset_x: Calibration offset horizontal (mm).
+        offset_y: Calibration offset vertikal (mm).
+
+    Returns:
+        bytes: Data PDF dalam bytes.
+    """
+    try:
+        _register_font()
+
+        ox_pt = mm(offset_x)
+        oy_pt = mm(offset_y)
+
+        # Buat overlay teks ke buffer memori
+        overlay_buf = io.BytesIO()
+        c = canvas.Canvas(
+            overlay_buf,
+            pagesize=(PAGE_WIDTH_PT, PAGE_HEIGHT_PT),
+        )
+
+        _draw_panel(c, data, x_offset=0.0, offset_x=ox_pt, offset_y=oy_pt)
+        _draw_panel(
+            c, data, x_offset=PANEL_OFFSET,
+            offset_x=ox_pt, offset_y=oy_pt,
+        )
+
+        c.showPage()
+        c.save()
+
+        # Merge template + overlay di memori
+        overlay_buf.seek(0)
+        overlay_reader = PdfReader(overlay_buf)
+        overlay_page = overlay_reader.pages[0]
+
+        if os.path.isfile(_TEMPLATE_PATH):
+            template_reader = PdfReader(_TEMPLATE_PATH)
+            base_page = template_reader.pages[0]
+            base_page.merge_page(overlay_page)
+            writer = PdfWriter()
+            writer.add_page(base_page)
+        else:
+            writer = PdfWriter()
+            writer.add_page(overlay_page)
+
+        output_buf = io.BytesIO()
+        writer.write(output_buf)
+        return output_buf.getvalue()
+
+    except FileNotFoundError:
+        raise
+    except Exception as e:
+        raise RuntimeError(f"Gagal membuat PDF: {e}") from e
+
+
 # ============================================================
 # Helper: Merge template PDF + overlay teks
 # ============================================================
 def _merge_template_and_overlay(
-    template_path: str,
-    overlay_path: str,
-    output_path: str,
-    page_w: float,
-    page_h: float,
-) -> None:
-    """
-    Menggabungkan template label.pdf (background) dengan overlay teks.
-    Jika template tidak ditemukan, output hanya berisi overlay teks.
-
-    Args:
-        template_path: Path ke file template PDF.
-        overlay_path:  Path ke overlay teks PDF.
-        output_path:   Path file output gabungan.
-        page_w:        Lebar halaman (points).
-        page_h:        Tinggi halaman (points).
-    """
+    template_path,
+    overlay_path,
+    output_path,
+):
+    """Menggabungkan template label.pdf (background) dengan overlay teks."""
     overlay_reader = PdfReader(overlay_path)
     overlay_page = overlay_reader.pages[0]
 
@@ -333,15 +481,9 @@ def _merge_template_and_overlay(
 
 # ============================================================
 # Fungsi Kalibrasi: Cetak halaman test grid
-# Membantu user menemukan offset_x / offset_y yang tepat.
 # ============================================================
-def generate_calibration_pdf(output_path: str) -> str:
-    """
-    Menghasilkan PDF kalibrasi berisi grid titik-titik
-    setiap 10mm untuk membantu menentukan offset printer.
-
-    Args:
-        output_path: Path file PDF output kalibrasi.
+def generate_calibration_pdf(output_path):
+    """Menghasilkan PDF kalibrasi berisi grid titik-titik setiap 10mm.
 
     Returns:
         str: Path absolut file PDF kalibrasi.
@@ -349,30 +491,33 @@ def generate_calibration_pdf(output_path: str) -> str:
     try:
         _register_font()
 
-        page_w = mm(A4_WIDTH_MM)
-        page_h = mm(A4_HEIGHT_MM)
-        c = canvas.Canvas(output_path, pagesize=(page_w, page_h))
+        c = canvas.Canvas(
+            output_path,
+            pagesize=(PAGE_WIDTH_PT, PAGE_HEIGHT_PT),
+        )
 
         c.setFont(FONT_NAME, 6)
-        c.setStrokeColorRGB(0, 0, 0)       # Warna hitam
+        c.setStrokeColorRGB(0, 0, 0)
         c.setFillColorRGB(0, 0, 0)
 
-        # Gambar grid setiap 10mm
-        for x in range(0, A4_WIDTH_MM + 1, 10):         # 0, 10, 20, ... 210mm
-            for y in range(0, A4_HEIGHT_MM + 1, 10):     # 0, 10, 20, ... 297mm
-                px = mm(x)      # Konversi X mm ke points
-                py = mm(y)      # Konversi Y mm ke points
+        max_x_mm = int(PAGE_WIDTH_PT / _mm) + 1
+        max_y_mm = int(PAGE_HEIGHT_PT / _mm) + 1
 
-                # Gambar titik kecil (lingkaran radius 0.5pt)
+        for x in range(0, max_x_mm, 10):
+            for y in range(0, max_y_mm, 10):
+                px = mm(x)
+                py = mm(y)
                 c.circle(px, py, 0.5, fill=1)
 
-                # Label koordinat setiap 50mm agar mudah dibaca
                 if x % 50 == 0 and y % 50 == 0:
                     c.drawString(px + 2, py + 2, f"{x},{y}")
 
-        # Judul halaman kalibrasi
         c.setFont(FONT_NAME, 10)
-        c.drawString(mm(10), mm(A4_HEIGHT_MM - 5), "CALIBRATION GRID — A4 (210×297mm) — Titik setiap 10mm")
+        c.drawString(
+            mm(10),
+            PAGE_HEIGHT_PT - mm(5),
+            "CALIBRATION GRID -- US Letter (216x279mm) -- Titik setiap 10mm",
+        )
 
         c.showPage()
         c.save()
@@ -388,10 +533,11 @@ def generate_calibration_pdf(output_path: str) -> str:
 # ============================================================
 if __name__ == "__main__":
     test_data = {
-        "panggilan": "母親許門",
-        "nama_mandarin": "梁氏橋玉",
-        "dari": "孝男",
-        "keterangan": "合家敬奉",
+        "panggilan": "\u7236\u89aa",
+        "nama_mandarin": "\u9b4f\u4e9e\u660c",
+        "dari": "\u5b5d\u4e94\u5b50 \u656c\u5949 \u53e9\u9996",
+        "keluarga": "Ayah Kandung",
+        "keterangan": "",
     }
 
     out = generate_pdf(test_data, "test_output.pdf", offset_x=0, offset_y=0)

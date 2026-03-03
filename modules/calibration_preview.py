@@ -1,9 +1,9 @@
 ﻿# -*- coding: utf-8 -*-
 """
-calibration_preview.py — Preview visual kalibrasi posisi teks pada kertas A4.
+calibration_preview.py — Preview visual kalibrasi posisi teks pada kertas US Letter.
 
 Menampilkan Toplevel window berisi:
-  - Canvas menggambarkan kertas A4 (210×297mm) berskala
+  - Canvas menggambarkan kertas US Letter (216×279mm) berskala
   - Grid titik setiap 10mm, label koordinat setiap 50mm
   - Marker posisi teks (berwarna) untuk setiap field formulir
   - Kontrol offset X/Y real-time dengan tombol +/−
@@ -17,33 +17,83 @@ import customtkinter as ctk
 
 
 # ============================================================
-# Konstanta Kertas A4 (mm)
+# Konstanta Kertas US Letter (mm) — sesuai template label.pdf
 # ============================================================
-A4_W = 210
-A4_H = 297
+PAPER_W = 216   # 215.9mm ≈ 216mm
+PAPER_H = 279   # 279.4mm ≈ 279mm
+
+# Offset panel kanan relatif terhadap panel kiri (mm)
+PANEL_OFFSET_MM = 92.6
 
 
 # ============================================================
 # Posisi field teks — HARUS SINKRON dengan pdf_engine.py
+# Koordinat dalam mm, origin = kiri-bawah kertas.
+# Hanya panel KIRI yang ditampilkan (panel kanan identik + offset).
 # ============================================================
 FIELDS = [
     {
-        "label": "Panggilan + Mandarin",
-        "desc": "X=68, Y=200, vertikal ↓12mm",
-        "sample": "母親許門梁氏橋玉",
-        "x": 68, "y": 200,
+        "label": "Dari",
+        "desc": "X=24.1, Y=129.3, vertikal",
+        "sample": "孝五子敬奉叩首",
+        "x": 24.1, "y": 129.3,
         "vertical": True,
-        "spacing": 12,
+        "spacing": 10.1,
+        "color": "#2E7D32",
+    },
+    {
+        "label": "Prefix",
+        "desc": "X=58.8, Y=139.1, vertikal",
+        "sample": "先考",
+        "x": 58.8, "y": 139.1,
+        "vertical": True,
+        "spacing": 8.9,
+        "color": "#9C27B0",
+    },
+    {
+        "label": "Panggilan+Mandarin",
+        "desc": "X=58.4, Y=119.2, vertikal",
+        "sample": "父親魏亞昌",
+        "x": 58.4, "y": 119.2,
+        "vertical": True,
+        "spacing": 10.1,
         "color": "#1565C0",
     },
     {
-        "label": "Dari + Keterangan",
-        "desc": "X=42, Y=170, vertikal ↓12mm",
-        "sample": "孝男合家敬奉",
-        "x": 42, "y": 170,
+        "label": "Ritual",
+        "desc": "X=58.4, Y=62.3, vertikal",
+        "sample": "一位正魂收领",
+        "x": 58.4, "y": 62.3,
         "vertical": True,
-        "spacing": 12,
-        "color": "#2E7D32",
+        "spacing": 10.1,
+        "color": "#FF6F00",
+    },
+    {
+        "label": "Keluarga",
+        "desc": "X=57.4, Y=6.8, horizontal",
+        "sample": "Ayah",
+        "x": 57.4, "y": 6.8,
+        "vertical": False,
+        "spacing": 3.5,
+        "color": "#D32F2F",
+    },
+    {
+        "label": "Zodiak",
+        "desc": "X=91.6, Y=129.6, vertikal",
+        "sample": "丙午",
+        "x": 91.6, "y": 129.6,
+        "vertical": True,
+        "spacing": 13.3,
+        "color": "#00695C",
+    },
+    {
+        "label": "Segel",
+        "desc": "X=90.9, Y=15.6 / X=22.3, Y=15.6",
+        "sample": "封",
+        "x": 90.9, "y": 15.6,
+        "vertical": False,
+        "spacing": 0,
+        "color": "#795548",
     },
 ]
 
@@ -52,7 +102,7 @@ FIELDS = [
 # Kelas Preview Kalibrasi
 # ============================================================
 class CalibrationPreview(ctk.CTkToplevel):
-    """Window preview visual posisi teks pada kertas formulir ritual A4."""
+    """Window preview visual posisi teks pada kertas formulir US Letter."""
 
     SCALE = 1.5     # pixel per mm
     PAD = 30        # padding sekeliling kertas (px)
@@ -72,7 +122,7 @@ class CalibrationPreview(ctk.CTkToplevel):
             on_print_calibration: Callback(offset_x, offset_y) untuk cetak PDF.
         """
         super().__init__(master)
-        self.title("Kalibrasi Visual - Layout Kertas A4 (210x297mm)")
+        self.title("Kalibrasi Visual - Layout Kertas US Letter (216x279mm)")
         self.resizable(False, False)
 
         self._offset_x = offset_x
@@ -91,11 +141,11 @@ class CalibrationPreview(ctk.CTkToplevel):
     # --------------------------------------------------------
     @property
     def _canvas_w(self) -> int:
-        return int(A4_W * self.SCALE) + 2 * self.PAD
+        return int(PAPER_W * self.SCALE) + 2 * self.PAD
 
     @property
     def _canvas_h(self) -> int:
-        return int(A4_H * self.SCALE) + 2 * self.PAD
+        return int(PAPER_H * self.SCALE) + 2 * self.PAD
 
     # --------------------------------------------------------
     # Konversi koordinat mm (origin bawah-kiri, seperti ReportLab)
@@ -103,7 +153,7 @@ class CalibrationPreview(ctk.CTkToplevel):
     # --------------------------------------------------------
     def _mm_to_px(self, x_mm: float, y_mm: float) -> tuple[float, float]:
         px = self.PAD + x_mm * self.SCALE
-        py = self.PAD + (A4_H - y_mm) * self.SCALE
+        py = self.PAD + (PAPER_H - y_mm) * self.SCALE
         return px, py
 
     # ========================================================
@@ -284,13 +334,13 @@ class CalibrationPreview(ctk.CTkToplevel):
         oy = self._offset_y
 
         # --- 1. Outline kertas A4 (latar merah muda = simulasi kertas merah) ---
-        x0, y0 = self._mm_to_px(0, A4_H)
-        x1, y1 = self._mm_to_px(A4_W, 0)
+        x0, y0 = self._mm_to_px(0, PAPER_H)
+        x1, y1 = self._mm_to_px(PAPER_W, 0)
         cv.create_rectangle(x0, y0, x1, y1, fill="#FFEBEE", outline="#333", width=2)
 
         # --- 2. Grid titik setiap 10mm ---
-        for gx in range(0, A4_W + 1, 10):
-            for gy in range(0, A4_H + 1, 10):
+        for gx in range(0, PAPER_W + 1, 10):
+            for gy in range(0, PAPER_H + 1, 10):
                 px, py = self._mm_to_px(gx, gy)
                 cv.create_oval(px - 1, py - 1, px + 1, py + 1, fill="#BDBDBD", outline="")
 
@@ -304,14 +354,14 @@ class CalibrationPreview(ctk.CTkToplevel):
                     )
 
         # --- 3. Garis bantu sumbu di tepi kertas (setiap 50mm) ---
-        for gx in range(0, A4_W + 1, 50):
-            px_top, py_top = self._mm_to_px(gx, A4_H)
+        for gx in range(0, PAPER_W + 1, 50):
+            px_top, py_top = self._mm_to_px(gx, PAPER_H)
             px_bot, py_bot = self._mm_to_px(gx, 0)
             cv.create_line(px_top, py_top, px_bot, py_bot, fill="#E0E0E0", dash=(1, 4))
 
-        for gy in range(0, A4_H + 1, 50):
+        for gy in range(0, PAPER_H + 1, 50):
             px_l, py_l = self._mm_to_px(0, gy)
-            px_r, py_r = self._mm_to_px(A4_W, gy)
+            px_r, py_r = self._mm_to_px(PAPER_W, gy)
             cv.create_line(px_l, py_l, px_r, py_r, fill="#E0E0E0", dash=(1, 4))
 
         # --- 4. Marker posisi setiap field ---
@@ -321,7 +371,7 @@ class CalibrationPreview(ctk.CTkToplevel):
         # --- 5. Judul atas ---
         cv.create_text(
             self._canvas_w // 2, 12,
-            text=f"Kertas A4 (210x297mm)  |  Offset X={ox:+.1f}mm  Y={oy:+.1f}mm",
+            text=f"US Letter (216x279mm)  |  Offset X={ox:+.1f}mm  Y={oy:+.1f}mm",
             font=("Consolas", 9, "bold"),
             fill="#333",
         )
