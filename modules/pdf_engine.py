@@ -112,54 +112,91 @@ PANEL_OFFSET = 262.56    # ~92.6mm
 
 # --- Kolom Dari (vertikal, atas-ke-bawah) ---
 DARI_X = 68.28            # ~24.1mm dari kiri
-DARI_Y_START = 366.48     # ~129.3mm dari bawah (karakter pertama)
+DARI_Y_START = 374.04     # ~131.9mm dari bawah (karakter pertama)
 DARI_SPACING = 28.68      # ~10.1mm per karakter
 
 # --- Kolom Panggilan + Nama Mandarin (vertikal) ---
 MENDIANG_X = 165.48       # ~58.4mm dari kiri
-MENDIANG_Y_START = 338.04 # ~119.2mm dari bawah (karakter pertama)
+MENDIANG_Y_START = 374.88 # ~132.3mm dari bawah (tepat di bawah 先 di template)
 MENDIANG_SPACING = 28.68  # ~10.1mm per karakter
 
 # --- Prefix (di atas kolom mendiang) ---
-PREFIX_X = 166.56          # ~58.8mm
-PREFIX_Y_START = 394.32    # ~139.1mm
+PREFIX_X = 165.48          # ~58.4mm
+PREFIX_Y_START = 403.56    # ~142.4mm
 PREFIX_SPACING = 25.20     # ~8.9mm
 
 # --- Teks ritual tetap (di bawah kolom mendiang) ---
 RITUAL_X = 165.48          # sama dengan mendiang
-RITUAL_Y_START = 176.64    # ~62.3mm
+RITUAL_Y_START = 184.20    # ~65.0mm
 RITUAL_SPACING = 28.68     # sama dengan mendiang
 
 # --- Keluarga / Indonesian label (horizontal, dekat bawah) ---
 KELUARGA_X = 162.84        # ~57.4mm
-KELUARGA_Y = 19.32         # ~6.8mm dari bawah
+KELUARGA_Y = 26.88         # ~9.5mm dari bawah
 
 # --- Zodiak tahun ---
 ZODIAC_X = 259.68          # ~91.6mm
-ZODIAC_STEM_Y = 367.32     # posisi stem
-ZODIAC_BRANCH_Y = 329.64   # posisi branch
+ZODIAC_STEM_Y = 374.88     # posisi stem
+ZODIAC_BRANCH_Y = 337.20   # posisi branch
 
 # --- Label tanggal tetap ---
 DATE_X = 259.68            # ~91.6mm
-YEAR_LABEL_Y = 250.20      # nian
-MONTH_LABEL_Y = 176.28     # yue
-DAY_LABEL_Y = 108.48       # ri
+YEAR_LABEL_Y = 257.76      # nian
+MONTH_LABEL_Y = 183.84     # yue
+DAY_LABEL_Y = 116.04       # ri
+
+# --- Angka bulan/hari (ukuran font & batas area) ---
+FONT_DATE_NUM = 16.0       # Font angka bulan/hari (lebih kecil dari label)
+DATE_NUM_SPACING = 20.0    # Jarak antar karakter angka
 
 # --- Tanda segel ---
 FENG_X = 257.76            # ~90.9mm
-FENG_Y = 44.28             # ~15.6mm
-FU_X = 63.36               # ~22.3mm
-FU_Y = 44.28               # ~15.6mm
+FENG_Y = 51.84             # ~18.3mm
+FU_X = 63.36               # ~22.4mm
+FU_Y = 51.84               # ~18.3mm
 
 # --- Ukuran font (setelah penyesuaian skala dari PDF asli) ---
 FONT_MAIN = 16.8           # Panggilan, Mandarin, Dari
 FONT_PREFIX = 14.9         # Prefix
 FONT_KELUARGA = 9.3        # Label keluarga (Indonesia)
 FONT_SEAL = 26.0           # Segel
-FONT_DATE = 22.3           # Zodiak & label tanggal
+FONT_DATE = 22.3           # Label tanggal (年月日)
+FONT_ZODIAC = 16.8         # Zodiak tahun (stem + branch)
+# Koreksi X agar angka (16pt) sejajar tengah dengan label (22.3pt)
+DATE_NUM_X_OFFSET = (FONT_DATE - FONT_DATE_NUM) / 2  # ~3.15pt ke kanan
 
 # Teks ritual tetap (selalu sama)
 _RITUAL_TEXT = "\u4e00\u4f4d\u6b63\u9b42\u6536\u9886"
+
+# Angka Mandarin
+_CHINESE_DIGITS = "〇一二三四五六七八九十"
+
+
+def _month_to_chinese(month: int) -> str:
+    """Konversi angka bulan (1-12) ke aksara Mandarin."""
+    if 1 <= month <= 10:
+        return _CHINESE_DIGITS[month]
+    if month == 11:
+        return "十一"
+    if month == 12:
+        return "十二"
+    return ""
+
+
+def _day_to_chinese(day: int) -> str:
+    """Konversi angka hari (1-30) ke aksara Mandarin."""
+    if 1 <= day <= 10:
+        return _CHINESE_DIGITS[day]
+    if 11 <= day <= 19:
+        return "十" + _CHINESE_DIGITS[day - 10]
+    if day == 20:
+        return "二十"
+    if 21 <= day <= 29:
+        return "廿" + _CHINESE_DIGITS[day - 20]
+    if day == 30:
+        return "三十"
+    return ""
+
 
 # Karakter penanda gender mendiang untuk deteksi prefix
 _FEMALE_INDICATORS = frozenset(
@@ -212,8 +249,9 @@ def _draw_vertical_chars(
     spacing_pt,
     offset_x_pt=0.0,
     offset_y_pt=0.0,
+    space_ratio=0.5,
 ):
-    """Gambar karakter vertikal (atas ke bawah), skip spasi.
+    """Gambar karakter vertikal (atas ke bawah), spasi = jarak lebih kecil.
 
     Args:
         c:            Canvas ReportLab.
@@ -223,17 +261,23 @@ def _draw_vertical_chars(
         spacing_pt:   Jarak antar posisi karakter (points).
         offset_x_pt:  Calibration offset X (points).
         offset_y_pt:  Calibration offset Y (points).
+        space_ratio:  Rasio jarak spasi terhadap spacing_pt (default 0.5).
     """
-    idx = 0
-    for char in text:
+    y_cursor = 0.0
+    for i, char in enumerate(text):
         if char != " ":
             final_x = x_pt + offset_x_pt
-            final_y = y_start_pt - idx * spacing_pt + offset_y_pt
+            final_y = y_start_pt - y_cursor + offset_y_pt
             c.drawString(final_x, final_y, char)
-        idx += 1
+        # Advance: spasi menggunakan jarak lebih kecil
+        if i < len(text) - 1:
+            if char == " ":
+                y_cursor += spacing_pt * space_ratio
+            else:
+                y_cursor += spacing_pt
 
 
-def _draw_panel(c, data, x_offset, offset_x, offset_y):
+def _draw_panel(c, data, x_offset, offset_x, offset_y, bulan=0, hari=0, tahun=0):
     """Gambar semua teks untuk satu panel.
 
     Args:
@@ -242,6 +286,9 @@ def _draw_panel(c, data, x_offset, offset_x, offset_y):
         x_offset:  Offset X panel (0 = kiri, PANEL_OFFSET = kanan).
         offset_x:  Calibration offset X (points).
         offset_y:  Calibration offset Y (points).
+        bulan:     Bulan (1-12), 0 = tidak cetak.
+        hari:      Hari (1-30), 0 = tidak cetak.
+        tahun:     Tahun Masehi untuk zodiak. 0 = tahun sekarang.
     """
     panggilan = data.get("panggilan", "")
     nama_mandarin = data.get("nama_mandarin", "")
@@ -251,27 +298,40 @@ def _draw_panel(c, data, x_offset, offset_x, offset_y):
     # --- 1. Kolom Dari (vertikal) ---
     # Keterangan TIDAK ditampilkan di PDF (hanya tersimpan di database)
     dari_text = dari
-    c.setFont(FONT_NAME, FONT_MAIN)
+
+    # Hitung panjang efektif (spasi = 0.5 posisi)
+    _SPACE_RATIO = 0.5
+    _n_spaces = dari_text.count(" ")
+    _n_chars = len(dari_text) - _n_spaces
+    # Panjang efektif dalam satuan "posisi penuh"
+    _eff_positions = _n_chars + _n_spaces * _SPACE_RATIO
+    # Batas bawah kolom Dari (di atas segel 附, Y=51.84 + font 26pt + margin)
+    _DARI_Y_BOTTOM = 86.0
+    _dari_available = DARI_Y_START - _DARI_Y_BOTTOM
+    _dari_needed = (_eff_positions - 1) * DARI_SPACING if _eff_positions > 1 else 0
+
+    if _dari_needed > _dari_available and _eff_positions > 1:
+        # Teks panjang: kecilkan spacing agar muat, font juga diperkecil
+        dari_spacing = _dari_available / (_eff_positions - 1)
+        dari_font = FONT_MAIN * (dari_spacing / DARI_SPACING)
+        dari_font = max(dari_font, 10.0)  # minimum 10pt
+    else:
+        dari_spacing = DARI_SPACING
+        dari_font = FONT_MAIN
+
+    c.setFont(FONT_NAME, dari_font)
     _draw_vertical_chars(
         c, dari_text,
         x_pt=DARI_X + x_offset,
         y_start_pt=DARI_Y_START,
-        spacing_pt=DARI_SPACING,
+        spacing_pt=dari_spacing,
         offset_x_pt=offset_x,
         offset_y_pt=offset_y,
+        space_ratio=_SPACE_RATIO,
     )
 
-    # --- 2. Prefix ---
-    prefix = _get_ancestor_prefix(panggilan)
-    c.setFont(FONT_NAME, FONT_PREFIX)
-    _draw_vertical_chars(
-        c, prefix,
-        x_pt=PREFIX_X + x_offset,
-        y_start_pt=PREFIX_Y_START,
-        spacing_pt=PREFIX_SPACING,
-        offset_x_pt=offset_x,
-        offset_y_pt=offset_y,
-    )
+    # --- 2. Prefix (先) ---
+    # TIDAK digambar karena 先 sudah ada di template label.pdf (warna merah)
 
     # --- 3. Kolom Panggilan + Nama Mandarin (vertikal) ---
     mendiang_text = panggilan + nama_mandarin
@@ -300,8 +360,19 @@ def _draw_panel(c, data, x_offset, offset_x, offset_y):
         )
 
     # --- 6. Zodiak tahun ---
-    stem, branch = _get_zodiac_year()
-    c.setFont(FONT_NAME, FONT_DATE)
+    # Tutup aksara zodiak bawaan template (merah) dengan kotak putih
+    # agar hanya zodiak dinamis kita yang terlihat.
+    _zx = ZODIAC_X + x_offset + offset_x
+    _zw = FONT_DATE + 2          # lebar cukup untuk 1 karakter besar
+    for _zy in (ZODIAC_STEM_Y, ZODIAC_BRANCH_Y):
+        c.saveState()
+        c.setFillColorRGB(1, 1, 1)   # putih
+        c.setStrokeColorRGB(1, 1, 1)
+        c.rect(_zx - 1, _zy + offset_y - 2, _zw, FONT_DATE + 4, fill=1, stroke=0)
+        c.restoreState()
+
+    stem, branch = _get_zodiac_year(tahun if tahun else None)
+    c.setFont(FONT_NAME, FONT_ZODIAC)
     c.drawString(
         ZODIAC_X + x_offset + offset_x,
         ZODIAC_STEM_Y + offset_y,
@@ -313,7 +384,41 @@ def _draw_panel(c, data, x_offset, offset_x, offset_y):
         branch,
     )
 
-    # --- 7, 8: 年月日, 封附, 一位正魂收领 ---
+    # --- 7. Angka bulan (di antara 年 dan 月) ---
+    if bulan:
+        month_text = _month_to_chinese(bulan)
+        n = len(month_text)
+        # Pusat vertikal antara 年 dan 月 (koreksi baseline: +font/3)
+        gap_center = (YEAR_LABEL_Y + MONTH_LABEL_Y) / 2 + FONT_DATE_NUM / 3
+        y_start = gap_center + (n - 1) * DATE_NUM_SPACING / 2
+        c.setFont(FONT_NAME, FONT_DATE_NUM)
+        _draw_vertical_chars(
+            c, month_text,
+            x_pt=DATE_X + DATE_NUM_X_OFFSET + x_offset,
+            y_start_pt=y_start,
+            spacing_pt=DATE_NUM_SPACING,
+            offset_x_pt=offset_x,
+            offset_y_pt=offset_y,
+        )
+
+    # --- 8. Angka hari (di antara 月 dan 日) ---
+    if hari:
+        day_text = _day_to_chinese(hari)
+        n = len(day_text)
+        # Pusat vertikal antara 月 dan 日 (koreksi baseline: +font/3)
+        gap_center = (MONTH_LABEL_Y + DAY_LABEL_Y) / 2 + FONT_DATE_NUM / 3
+        y_start = gap_center + (n - 1) * DATE_NUM_SPACING / 2
+        c.setFont(FONT_NAME, FONT_DATE_NUM)
+        _draw_vertical_chars(
+            c, day_text,
+            x_pt=DATE_X + DATE_NUM_X_OFFSET + x_offset,
+            y_start_pt=y_start,
+            spacing_pt=DATE_NUM_SPACING,
+            offset_x_pt=offset_x,
+            offset_y_pt=offset_y,
+        )
+
+    # --- 9. 封附, 一位正魂收领 ---
     # TIDAK digambar karena sudah ada di template label.pdf (warna merah)
 
 
@@ -325,6 +430,9 @@ def generate_pdf(
     output_path,
     offset_x=0.0,
     offset_y=0.0,
+    bulan=0,
+    hari=0,
+    tahun=0,
 ):
     """Menghasilkan PDF dual-panel dengan template label.pdf.
 
@@ -338,6 +446,9 @@ def generate_pdf(
         output_path: Path file PDF output.
         offset_x: Calibration offset horizontal (mm). Positif = geser kanan.
         offset_y: Calibration offset vertikal (mm). Positif = geser atas.
+        bulan: Bulan (1-12), 0 = tidak cetak angka bulan.
+        hari: Hari (1-30), 0 = tidak cetak angka hari.
+        tahun: Tahun Masehi untuk zodiak. 0 = tahun sekarang.
 
     Returns:
         str: Path absolut file PDF yang dihasilkan.
@@ -356,12 +467,14 @@ def generate_pdf(
         )
 
         # Gambar panel KIRI
-        _draw_panel(c, data, x_offset=0.0, offset_x=ox_pt, offset_y=oy_pt)
+        _draw_panel(c, data, x_offset=0.0, offset_x=ox_pt, offset_y=oy_pt,
+                    bulan=bulan, hari=hari, tahun=tahun)
 
         # Gambar panel KANAN (identik, geser X)
         _draw_panel(
             c, data, x_offset=PANEL_OFFSET,
             offset_x=ox_pt, offset_y=oy_pt,
+            bulan=bulan, hari=hari, tahun=tahun,
         )
 
         c.showPage()
@@ -390,6 +503,9 @@ def generate_pdf_bytes(
     data,
     offset_x=0.0,
     offset_y=0.0,
+    bulan=0,
+    hari=0,
+    tahun=0,
 ):
     """Menghasilkan PDF dual-panel sebagai bytes (in-memory).
 
@@ -400,6 +516,9 @@ def generate_pdf_bytes(
         data: Dictionary berisi field formulir.
         offset_x: Calibration offset horizontal (mm).
         offset_y: Calibration offset vertikal (mm).
+        bulan: Bulan (1-12), 0 = tidak cetak angka bulan.
+        hari: Hari (1-30), 0 = tidak cetak angka hari.
+        tahun: Tahun Masehi untuk zodiak. 0 = tahun sekarang.
 
     Returns:
         bytes: Data PDF dalam bytes.
@@ -417,10 +536,12 @@ def generate_pdf_bytes(
             pagesize=(PAGE_WIDTH_PT, PAGE_HEIGHT_PT),
         )
 
-        _draw_panel(c, data, x_offset=0.0, offset_x=ox_pt, offset_y=oy_pt)
+        _draw_panel(c, data, x_offset=0.0, offset_x=ox_pt, offset_y=oy_pt,
+                    bulan=bulan, hari=hari, tahun=tahun)
         _draw_panel(
             c, data, x_offset=PANEL_OFFSET,
             offset_x=ox_pt, offset_y=oy_pt,
+            bulan=bulan, hari=hari, tahun=tahun,
         )
 
         c.showPage()

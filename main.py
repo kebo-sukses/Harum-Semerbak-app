@@ -155,34 +155,65 @@ _PANGGILAN_DISPLAY.insert(0, _PANGGILAN_MANUAL)
 # Template __ diganti angka Mandarin secara dinamis (butuh spinner)
 DARI_OPTIONS: list[tuple[str, str, str]] = [
     # --- Kandung ---
-    ("Anak Lk dan Pr",             "众孝眷",             ""),
-    ("Anak Ke-",                    "孝__子",           "孝__女"),
-    ("Anak Bungsu (Terakhir)",      "孝幼子",           "孝幼女"),
-    ("Adik",                        "愚__弟",           "愚__妹"),
-    ("Kakak",                       "胞__兄",           "胞__姊"),
+    ("Anak Lk",                     "孝男",              ""),
+    ("Anak Pr",                     "孝女",              ""),
+    ("Anak Lk dan Pr",              "众孝眷",            ""),
+    ("Anak Lk Ke-",                 "孝__子",            ""),
+    ("Anak Pr Ke-",                 "孝__女",            ""),
+    ("Anak Bungsu Lk (Terakhir)",   "孝幼子",            ""),
+    ("Anak Bungsu Pr (Terakhir)",   "孝幼女",            ""),
+    ("Anak Bungsu Lk dan Pr (Terakhir)", "孝幼子孝幼女",  ""),
+    # --- Adik ---
+    ("Adik Lk",                     "愚__弟",            ""),
+    ("Adik Pr",                     "愚__妹",            ""),
+    # --- Kakak ---
+    ("Kakak Lk",                    "胞__兄",            ""),
+    ("Kakak Pr",                    "胞__姊",            ""),
     # --- Angkat ---
-    ("Anak Angkat",                 "孝養子",           "孝養女"),
+    ("Anak Angkat Lk",              "孝養子",            ""),
+    ("Anak Angkat Pr",              "孝養女",            ""),
+    ("Anak Angkat Lk dan Pr",       "孝養子孝養女",      ""),
     # --- Tiri ---
-    ("Anak Tiri",                   "孝繼子",           "孝繼女"),
+    ("Anak Tiri Lk",                "孝繼子",            ""),
+    ("Anak Tiri Pr",                "孝繼女",            ""),
+    ("Anak Tiri Lk dan Pr",         "孝繼子孝繼女",      ""),
     # --- Menantu ---
-    ("Menantu",                     "孝女婿",           "孝兒媳"),
+    ("Menantu Lk",                  "孝女婿",            ""),
+    ("Menantu Pr",                  "孝兒媳",            ""),
+    ("Menantu Lk dan Pr",           "孝女婿孝兒媳",      ""),
     # --- Cucu ---
-    ("Cucu Kandung",                "孝孫",             "孝孫女"),
-    ("Cucu Luar",                   "孝外孫",           "孝外孫女"),
+    ("Cucu Kandung Lk",             "孝孫",              ""),
+    ("Cucu Kandung Pr",             "孝孫女",            ""),
+    ("Cucu Kandung Lk dan Pr",      "孝孫孝孫女",        ""),
+    ("Cucu Luar Lk",                "孝外孫",            ""),
+    ("Cucu Luar Pr",                "孝外孫女",          ""),
+    ("Cucu Luar Lk dan Pr",         "孝外孫孝外孫女",    ""),
     # --- Keponakan ---
-    ("Keponakan (Sdr Laki-laki)",   "孝姪",             "孝姪女"),
-    ("Keponakan (Sdr Perempuan)",   "孝外甥",           "孝外甥女"),
+    ("Keponakan Lk (Sdr Laki-laki)", "孝姪",             ""),
+    ("Keponakan Pr (Sdr Laki-laki)", "孝姪女",           ""),
+    ("Keponakan Lk dan Pr (Sdr Laki-laki)", "孝姪孝姪女", ""),
+    ("Keponakan Lk (Sdr Perempuan)", "孝外甥",           ""),
+    ("Keponakan Pr (Sdr Perempuan)", "孝外甥女",         ""),
+    ("Keponakan Lk dan Pr (Sdr Perempuan)", "孝外甥孝外甥女", ""),
     # --- Ipar ---
-    ("Saudara Ipar (Adik)",         "孝內弟",           "孝內姊"),
-    ("Saudara Ipar (Kakak)",        "内兄",              "内妹"),
+    ("Saudara Ipar Lk (Adik)",      "孝內弟",            ""),
+    ("Saudara Ipar Pr (Adik)",      "孝內姊",            ""),
+    ("Saudara Ipar Lk dan Pr (Adik)", "孝內弟孝內姊",    ""),
+    ("Saudara Ipar Lk (Kakak)",     "内兄",              ""),
+    ("Saudara Ipar Pr (Kakak)",     "内妹",              ""),
+    ("Saudara Ipar Lk dan Pr (Kakak)", "内兄内妹",       ""),
     # --- Frasa Umum ---
-    ("众孝眷 偕 合家敬奉",          "众孝眷 偕 合家敬奉",     ""),
-    ("孝子贤孙 偕 合家敬奉",        "孝子贤孙 偕 合家敬奉",   ""),
-    ("合家敬奉 叩首",              "合家敬奉 叩首",         ""),
+    ("众孝眷 偕 合家敬奉",          "众孝眷 偕 合家敬奉",  ""),
+    ("孝子贤孙 偕 合家敬奉",        "孝子贤孙 偕 合家敬奉", ""),
+    ("合家敬奉 叩首",               "合家敬奉 叩首",       ""),
 ]
 
 # Kategori Dari yang membutuhkan spinner (nama sebelum generate display)
-_DARI_NUMBERED_CATEGORIES: set[str] = {"Anak Ke-", "Adik", "Kakak"}
+_DARI_NUMBERED_CATEGORIES: set[str] = {
+    "Anak Lk Ke-", "Anak Pr Ke-",
+    "Adik Lk", "Adik Pr",
+    "Kakak Lk", "Kakak Pr",
+}
 
 # Angka Mandarin untuk urutan Anak (beda: 2 = 次)
 _DARI_ANAK_NUMBERS: dict[int, str] = {
@@ -1305,6 +1336,91 @@ class RitualFormApp(ctk.CTk):
         except RuntimeError as e:
             messagebox.showerror("Gagal Menyimpan", str(e))
 
+    def _show_date_dialog(self) -> tuple | None:
+        """Tampilkan dialog pilih tahun, bulan & hari sebelum cetak.
+
+        Returns:
+            Tuple (tahun, bulan, hari) jika OK, None jika Cancel.
+        """
+        from datetime import datetime as _dt
+        current_year = _dt.now().year
+
+        result = [None]
+
+        dialog = ctk.CTkToplevel(self)
+        dialog.title("Pilih Tanggal Cetak")
+        dialog.resizable(False, False)
+        dialog.grab_set()
+
+        # --- Tahun ---
+        ctk.CTkLabel(
+            dialog, text="Tahun (年):", font=ctk.CTkFont(size=13),
+        ).grid(row=0, column=0, padx=(20, 8), pady=(20, 5), sticky="e")
+
+        tahun_var = tk.IntVar(value=current_year)
+        year_range = [str(y) for y in range(current_year - 2, current_year + 3)]
+        tahun_menu = ctk.CTkOptionMenu(
+            dialog, variable=tahun_var, width=120,
+            values=year_range,
+            command=lambda v: tahun_var.set(int(v)),
+        )
+        tahun_menu.set(str(current_year))
+        tahun_menu.grid(row=0, column=1, padx=(0, 20), pady=(20, 5), sticky="w")
+
+        # --- Bulan ---
+        ctk.CTkLabel(
+            dialog, text="Bulan (月):", font=ctk.CTkFont(size=13),
+        ).grid(row=1, column=0, padx=(20, 8), pady=5, sticky="e")
+
+        bulan_var = tk.IntVar(value=1)
+        bulan_menu = ctk.CTkOptionMenu(
+            dialog, variable=bulan_var, width=120,
+            values=[str(i) for i in range(1, 13)],
+            command=lambda v: bulan_var.set(int(v)),
+        )
+        bulan_menu.grid(row=1, column=1, padx=(0, 20), pady=5, sticky="w")
+
+        # --- Hari ---
+        ctk.CTkLabel(
+            dialog, text="Hari (日):", font=ctk.CTkFont(size=13),
+        ).grid(row=2, column=0, padx=(20, 8), pady=5, sticky="e")
+
+        hari_var = tk.IntVar(value=1)
+        hari_menu = ctk.CTkOptionMenu(
+            dialog, variable=hari_var, width=120,
+            values=[str(i) for i in range(1, 31)],
+            command=lambda v: hari_var.set(int(v)),
+        )
+        hari_menu.grid(row=2, column=1, padx=(0, 20), pady=5, sticky="w")
+
+        # --- Tombol ---
+        btn_frame = ctk.CTkFrame(dialog, fg_color="transparent")
+        btn_frame.grid(row=3, column=0, columnspan=2, pady=(15, 20))
+
+        def on_ok():
+            result[0] = (tahun_var.get(), bulan_var.get(), hari_var.get())
+            dialog.destroy()
+
+        def on_cancel():
+            dialog.destroy()
+
+        ctk.CTkButton(btn_frame, text="Cetak", width=100, command=on_ok).pack(
+            side="left", padx=8,
+        )
+        ctk.CTkButton(
+            btn_frame, text="Batal", width=100, fg_color="gray",
+            command=on_cancel,
+        ).pack(side="left", padx=8)
+
+        # Posisikan di tengah parent
+        dialog.update_idletasks()
+        x = self.winfo_x() + (self.winfo_width() - dialog.winfo_width()) // 2
+        y = self.winfo_y() + (self.winfo_height() - dialog.winfo_height()) // 2
+        dialog.geometry(f"+{x}+{y}")
+
+        dialog.wait_window()
+        return result[0]
+
     def _on_print(self) -> None:
         """Handler tombol Cetak: Preview PDF dan cetak langsung ke printer."""
         selected = self.tree.selection()
@@ -1345,12 +1461,19 @@ class RitualFormApp(ctk.CTk):
             "keterangan": values[6],
         }
 
+        # Dialog pilih tanggal
+        date_result = self._show_date_dialog()
+        if date_result is None:
+            return
+        tahun, bulan, hari = date_result
+
         # Offset default (kalibrasi belum diaktifkan)
         offset_x, offset_y = 0.0, 0.0
 
         try:
             pdf_bytes = generate_pdf_bytes(
                 data, offset_x=offset_x, offset_y=offset_y,
+                bulan=bulan, hari=hari, tahun=tahun,
             )
             title = f"Preview — {values[1]} {values[2]}"
             PDFPreviewWindow(self, pdf_bytes=pdf_bytes, title_text=title)
