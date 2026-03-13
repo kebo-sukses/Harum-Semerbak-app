@@ -45,7 +45,7 @@ from modules.dictionary_window import DictionaryWindow
 # ============================================================
 # Versi Aplikasi
 # ============================================================
-APP_VERSION = "1.2.0"
+APP_VERSION = "1.3.0"
 
 # ============================================================
 # Konstanta UI
@@ -205,7 +205,7 @@ DARI_OPTIONS: list[tuple[str, str, str]] = [
     # --- Frasa Umum ---
     ("众孝眷 偕 合家敬奉",          "众孝眷 偕 合家敬奉",  ""),
     ("孝子贤孙 偕 合家敬奉",        "孝子贤孙 偕 合家敬奉", ""),
-    ("合家敬奉 叩首",               "合家敬奉 叩首",       ""),
+    ("合家敬奉",                     "合家敬奉",             ""),
 ]
 
 # Kategori Dari yang membutuhkan spinner (nama sebelum generate display)
@@ -264,11 +264,11 @@ for _nama, _laki, _perempuan in DARI_OPTIONS:
 _DARI_MANUAL = "(Isi Manual)"
 _DARI_DISPLAY.insert(0, _DARI_MANUAL)
 
-# Display strings dari 3 frasa umum (tanpa suffix 敬奉 叩首)
+# Display strings dari 3 frasa umum (tanpa suffix 敬奉)
 _DARI_FRASA_UMUM: set[str] = set()
 for _nama, _laki, _perempuan in DARI_OPTIONS:
     if _nama in ("众孝眷 偕 合家敬奉", "孝子贤孙 偕 合家敬奉",
-                 "合家敬奉 叩首"):
+                 "合家敬奉"):
         if _perempuan:
             _d = f"{_nama}  (♂ {_laki} / ♀ {_perempuan})"
         else:
@@ -320,15 +320,15 @@ def _reverse_lookup_dari(
 ) -> tuple[str | None, int | None, str]:
     """Reverse lookup aksara Mandarin Dari → (display_string, spinner_number, gender).
 
-    Suffix ' 敬奉 叩首' otomatis dihapus sebelum pencocokan.
+    Suffix ' 敬奉' (dan legacy ' 敬奉 叩首') otomatis dihapus sebelum pencocokan.
 
     Returns:
         (display, None, gender) untuk item non-bernomor,
         (display, num, gender)  untuk item bernomor,
         (None, None, "L")       jika tidak ditemukan.
     """
-    # Strip suffix "敬奉 叩首" jika ada (disimpan ke DB, perlu dihapus utk lookup)
-    clean = mandarin_value.removesuffix(" 敬奉 叩首")
+    # Strip suffix (versi baru " 敬奉" dan legacy " 敬奉 叩首")
+    clean = mandarin_value.removesuffix(" 敬奉 叩首").removesuffix(" 敬奉")
 
     # Coba cocokkan item non-bernomor langsung
     for display in _DARI_DISPLAY:
@@ -962,9 +962,9 @@ class RitualFormApp(ctk.CTk):
         )
         self._lbl_dari_mandarin.pack(side="left")
 
-        # Suffix "敬奉 叩首" (tersembunyi sampai ada pilihan)
+        # Suffix "敬奉" (tersembunyi sampai ada pilihan; 叩首 sudah di template)
         self._lbl_dari_suffix = ctk.CTkLabel(
-            self._dari_preview_frame, text="  敬奉 叩首",
+            self._dari_preview_frame, text="  敬奉",
             font=ctk.CTkFont(family="SimSun", size=16, weight="bold"),
             text_color="#C62828",
         )
@@ -1337,10 +1337,10 @@ class RitualFormApp(ctk.CTk):
             messagebox.showerror("Gagal Menyimpan", str(e))
 
     def _show_date_dialog(self) -> tuple | None:
-        """Tampilkan dialog pilih tahun, bulan & hari sebelum cetak.
+        """Tampilkan dialog pilih template, tahun, bulan & hari sebelum cetak.
 
         Returns:
-            Tuple (tahun, bulan, hari) jika OK, None jika Cancel.
+            Tuple (tahun, bulan, hari, template) jika OK, None jika Cancel.
         """
         from datetime import datetime as _dt
         current_year = _dt.now().year
@@ -1348,14 +1348,29 @@ class RitualFormApp(ctk.CTk):
         result = [None]
 
         dialog = ctk.CTkToplevel(self)
-        dialog.title("Pilih Tanggal Cetak")
+        dialog.title("Pilih Template & Tanggal Cetak")
         dialog.resizable(False, False)
         dialog.grab_set()
+
+        # --- Template ---
+        ctk.CTkLabel(
+            dialog, text="Template:", font=ctk.CTkFont(size=13),
+        ).grid(row=0, column=0, padx=(20, 8), pady=(20, 5), sticky="e")
+
+        template_var = tk.IntVar(value=1)
+        tpl_frame = ctk.CTkFrame(dialog, fg_color="transparent")
+        tpl_frame.grid(row=0, column=1, padx=(0, 20), pady=(20, 5), sticky="w")
+        ctk.CTkRadioButton(
+            tpl_frame, text="Template 1", variable=template_var, value=1,
+        ).pack(side="left", padx=(0, 10))
+        ctk.CTkRadioButton(
+            tpl_frame, text="Template 2", variable=template_var, value=2,
+        ).pack(side="left")
 
         # --- Tahun ---
         ctk.CTkLabel(
             dialog, text="Tahun (年):", font=ctk.CTkFont(size=13),
-        ).grid(row=0, column=0, padx=(20, 8), pady=(20, 5), sticky="e")
+        ).grid(row=1, column=0, padx=(20, 8), pady=5, sticky="e")
 
         tahun_var = tk.IntVar(value=current_year)
         year_range = [str(y) for y in range(current_year - 2, current_year + 3)]
@@ -1365,12 +1380,12 @@ class RitualFormApp(ctk.CTk):
             command=lambda v: tahun_var.set(int(v)),
         )
         tahun_menu.set(str(current_year))
-        tahun_menu.grid(row=0, column=1, padx=(0, 20), pady=(20, 5), sticky="w")
+        tahun_menu.grid(row=1, column=1, padx=(0, 20), pady=5, sticky="w")
 
         # --- Bulan ---
         ctk.CTkLabel(
             dialog, text="Bulan (月):", font=ctk.CTkFont(size=13),
-        ).grid(row=1, column=0, padx=(20, 8), pady=5, sticky="e")
+        ).grid(row=2, column=0, padx=(20, 8), pady=5, sticky="e")
 
         bulan_var = tk.IntVar(value=1)
         bulan_menu = ctk.CTkOptionMenu(
@@ -1378,12 +1393,12 @@ class RitualFormApp(ctk.CTk):
             values=[str(i) for i in range(1, 13)],
             command=lambda v: bulan_var.set(int(v)),
         )
-        bulan_menu.grid(row=1, column=1, padx=(0, 20), pady=5, sticky="w")
+        bulan_menu.grid(row=2, column=1, padx=(0, 20), pady=5, sticky="w")
 
         # --- Hari ---
         ctk.CTkLabel(
             dialog, text="Hari (日):", font=ctk.CTkFont(size=13),
-        ).grid(row=2, column=0, padx=(20, 8), pady=5, sticky="e")
+        ).grid(row=3, column=0, padx=(20, 8), pady=5, sticky="e")
 
         hari_var = tk.IntVar(value=1)
         hari_menu = ctk.CTkOptionMenu(
@@ -1391,14 +1406,14 @@ class RitualFormApp(ctk.CTk):
             values=[str(i) for i in range(1, 31)],
             command=lambda v: hari_var.set(int(v)),
         )
-        hari_menu.grid(row=2, column=1, padx=(0, 20), pady=5, sticky="w")
+        hari_menu.grid(row=3, column=1, padx=(0, 20), pady=5, sticky="w")
 
         # --- Tombol ---
         btn_frame = ctk.CTkFrame(dialog, fg_color="transparent")
-        btn_frame.grid(row=3, column=0, columnspan=2, pady=(15, 20))
+        btn_frame.grid(row=4, column=0, columnspan=2, pady=(15, 20))
 
         def on_ok():
-            result[0] = (tahun_var.get(), bulan_var.get(), hari_var.get())
+            result[0] = (tahun_var.get(), bulan_var.get(), hari_var.get(), template_var.get())
             dialog.destroy()
 
         def on_cancel():
@@ -1465,7 +1480,7 @@ class RitualFormApp(ctk.CTk):
         date_result = self._show_date_dialog()
         if date_result is None:
             return
-        tahun, bulan, hari = date_result
+        tahun, bulan, hari, template = date_result
 
         # Offset default (kalibrasi belum diaktifkan)
         offset_x, offset_y = 0.0, 0.0
@@ -1474,6 +1489,7 @@ class RitualFormApp(ctk.CTk):
             pdf_bytes = generate_pdf_bytes(
                 data, offset_x=offset_x, offset_y=offset_y,
                 bulan=bulan, hari=hari, tahun=tahun,
+                template=template,
             )
             title = f"Preview — {values[1]} {values[2]}"
             PDFPreviewWindow(self, pdf_bytes=pdf_bytes, title_text=title)
@@ -1660,7 +1676,7 @@ class RitualFormApp(ctk.CTk):
             self._on_dari_selected(dari_disp)
         else:
             # Fallback: gunakan mode manual dan isi entry dengan value asli
-            clean = dari_mandarin.replace("敬奉", "").replace("叩首", "").strip()
+            clean = dari_mandarin.replace("敬奉", "").replace("叩首", "").replace("  ", " ").strip()
             self.combo_dari.set(_DARI_MANUAL)
             self._on_dari_selected(_DARI_MANUAL)
             self._entry_dari_manual.insert(0, clean)
@@ -1933,7 +1949,7 @@ class RitualFormApp(ctk.CTk):
         """Callback saat user mengetik di entry manual Dari."""
         text = self._entry_dari_manual.get().strip()
         self._lbl_dari_mandarin.configure(text=text)
-        # Mode manual: tidak tampilkan suffix 敬奉 叩首
+        # Mode manual: tidak tampilkan suffix 敬奉
         self._lbl_dari_suffix.pack_forget()
 
     def _update_dari_preview(self, choice: str) -> None:
@@ -1960,7 +1976,7 @@ class RitualFormApp(ctk.CTk):
 
         self._lbl_dari_mandarin.configure(text=mandarin)
 
-        # Tampilkan/sembunyikan suffix "敬奉 叩首"
+        # Tampilkan/sembunyikan suffix "敬奉"
         if mandarin and choice not in _DARI_FRASA_UMUM:
             self._lbl_dari_suffix.pack(side="left")
         else:
@@ -1988,9 +2004,9 @@ class RitualFormApp(ctk.CTk):
                 mandarin, num, choice,
             )
 
-        # Tambahkan suffix "敬奉 叩首" kecuali untuk frasa umum
+        # Tambahkan suffix "敬奉" kecuali untuk frasa umum (叩首 sudah di template)
         if mandarin and choice not in _DARI_FRASA_UMUM:
-            mandarin = f"{mandarin} 敬奉 叩首"
+            mandarin = f"{mandarin} 敬奉"
 
         return mandarin
 

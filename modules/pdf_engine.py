@@ -43,6 +43,9 @@ PAGE_HEIGHT_PT = 792.0   # 279.4mm
 _TEMPLATE_PATH = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "..", "assets", "label.pdf"
 )
+_TEMPLATE_V2_PATH = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "..", "assets", "label_v2.pdf"
+)
 
 
 # ============================================================
@@ -113,12 +116,12 @@ PANEL_OFFSET = 262.56    # ~92.6mm
 # --- Kolom Dari (vertikal, atas-ke-bawah) ---
 DARI_X = 68.28            # ~24.1mm dari kiri
 DARI_Y_START = 374.04     # ~131.9mm dari bawah (karakter pertama)
-DARI_SPACING = 28.68      # ~10.1mm per karakter
+DARI_SPACING = 33.0       # ~11.6mm per karakter
 
 # --- Kolom Panggilan + Nama Mandarin (vertikal) ---
 MENDIANG_X = 165.48       # ~58.4mm dari kiri
 MENDIANG_Y_START = 374.88 # ~132.3mm dari bawah (tepat di bawah 先 di template)
-MENDIANG_SPACING = 28.68  # ~10.1mm per karakter
+MENDIANG_SPACING = 33.0   # ~11.6mm per karakter
 
 # --- Prefix (di atas kolom mendiang) ---
 PREFIX_X = 165.48          # ~58.4mm
@@ -156,7 +159,7 @@ FU_X = 63.36               # ~22.4mm
 FU_Y = 51.84               # ~18.3mm
 
 # --- Ukuran font (setelah penyesuaian skala dari PDF asli) ---
-FONT_MAIN = 16.8           # Panggilan, Mandarin, Dari
+FONT_MAIN = 20.0           # Panggilan, Mandarin, Dari
 FONT_PREFIX = 14.9         # Prefix
 FONT_KELUARGA = 9.3        # Label keluarga (Indonesia)
 FONT_SEAL = 26.0           # Segel
@@ -164,6 +167,27 @@ FONT_DATE = 22.3           # Label tanggal (年月日)
 FONT_ZODIAC = 16.8         # Zodiak tahun (stem + branch)
 # Koreksi X agar angka (16pt) sejajar tengah dengan label (22.3pt)
 DATE_NUM_X_OFFSET = (FONT_DATE - FONT_DATE_NUM) / 2  # ~3.15pt ke kanan
+
+# ============================================================
+# Layout Template 2 (label_v2.pdf) — Y coordinates berbeda
+# Kolom inner: RL y=169.6 s/d 705.7 (vs T1: 38.3 s/d 541.1)
+# Dihitung dari analisis posisi gambar header & guide lines.
+# ============================================================
+_LAYOUT_V2 = {
+    "DARI_Y_START": 578.0,
+    "DARI_Y_BOTTOM": 227.0,
+    "MENDIANG_Y_START": 555.0,     # diturunkan agar tidak tertimpa 過/先
+    "MENDIANG_Y_BOTTOM": 350.0,
+    "ZODIAC_STEM_Y": 615.0,        # 丙 — diturunkan agar 太歲 terlihat
+    "ZODIAC_BRANCH_Y": 585.0,      # 午 — diturunkan
+    "YEAR_LABEL_Y": 560.0,         # diturunkan agar angka bulan terpusat
+    "MONTH_LABEL_Y": 345.0,        # posisi label 月 di template
+    "DAY_LABEL_Y": 260.0,          # dinaikkan agar angka hari terpusat
+    "KELUARGA_Y": 26.88,
+    "FONT_ZODIAC": 22.0,           # zodiak
+    "FONT_DATE_NUM": 22.0,         # angka bulan/hari
+    "DATE_NUM_SPACING": 26.0,      # jarak antar angka (proporsional)
+}
 
 # Teks ritual tetap (selalu sama)
 _RITUAL_TEXT = "\u4e00\u4f4d\u6b63\u9b42\u6536\u9886"
@@ -184,9 +208,9 @@ def _month_to_chinese(month: int) -> str:
 
 
 def _day_to_chinese(day: int) -> str:
-    """Konversi angka hari (1-30) ke aksara Mandarin."""
+    """Konversi angka hari (1-30) ke aksara Mandarin (format kalender Cina)."""
     if 1 <= day <= 10:
-        return _CHINESE_DIGITS[day]
+        return "初" + _CHINESE_DIGITS[day]
     if 11 <= day <= 19:
         return "十" + _CHINESE_DIGITS[day - 10]
     if day == 20:
@@ -277,7 +301,7 @@ def _draw_vertical_chars(
                 y_cursor += spacing_pt
 
 
-def _draw_panel(c, data, x_offset, offset_x, offset_y, bulan=0, hari=0, tahun=0):
+def _draw_panel(c, data, x_offset, offset_x, offset_y, bulan=0, hari=0, tahun=0, template=1):
     """Gambar semua teks untuk satu panel.
 
     Args:
@@ -289,7 +313,39 @@ def _draw_panel(c, data, x_offset, offset_x, offset_y, bulan=0, hari=0, tahun=0)
         bulan:     Bulan (1-12), 0 = tidak cetak.
         hari:      Hari (1-30), 0 = tidak cetak.
         tahun:     Tahun Masehi untuk zodiak. 0 = tahun sekarang.
+        template:  1 = label.pdf, 2 = label_v2.pdf.
     """
+    # Pilih layout Y sesuai template
+    if template == 2:
+        v = _LAYOUT_V2
+        dari_y_start = v["DARI_Y_START"]
+        dari_y_bottom = v["DARI_Y_BOTTOM"]
+        mendiang_y_start = v["MENDIANG_Y_START"]
+        mendiang_y_bottom = v["MENDIANG_Y_BOTTOM"]
+        zodiac_stem_y = v["ZODIAC_STEM_Y"]
+        zodiac_branch_y = v["ZODIAC_BRANCH_Y"]
+        year_label_y = v["YEAR_LABEL_Y"]
+        month_label_y = v["MONTH_LABEL_Y"]
+        day_label_y = v["DAY_LABEL_Y"]
+        keluarga_y = v["KELUARGA_Y"]
+        font_zodiac = v["FONT_ZODIAC"]
+        font_date_num = v["FONT_DATE_NUM"]
+        date_num_spacing = v["DATE_NUM_SPACING"]
+    else:
+        dari_y_start = DARI_Y_START
+        dari_y_bottom = 86.0
+        mendiang_y_start = MENDIANG_Y_START
+        mendiang_y_bottom = 195.0
+        zodiac_stem_y = ZODIAC_STEM_Y
+        zodiac_branch_y = ZODIAC_BRANCH_Y
+        year_label_y = YEAR_LABEL_Y
+        month_label_y = MONTH_LABEL_Y
+        day_label_y = DAY_LABEL_Y
+        keluarga_y = KELUARGA_Y
+        font_zodiac = FONT_ZODIAC
+        font_date_num = FONT_DATE_NUM
+        date_num_spacing = DATE_NUM_SPACING
+
     panggilan = data.get("panggilan", "")
     nama_mandarin = data.get("nama_mandarin", "")
     dari = data.get("dari", "")
@@ -305,9 +361,7 @@ def _draw_panel(c, data, x_offset, offset_x, offset_y, bulan=0, hari=0, tahun=0)
     _n_chars = len(dari_text) - _n_spaces
     # Panjang efektif dalam satuan "posisi penuh"
     _eff_positions = _n_chars + _n_spaces * _SPACE_RATIO
-    # Batas bawah kolom Dari (di atas segel 附, Y=51.84 + font 26pt + margin)
-    _DARI_Y_BOTTOM = 86.0
-    _dari_available = DARI_Y_START - _DARI_Y_BOTTOM
+    _dari_available = dari_y_start - dari_y_bottom
     _dari_needed = (_eff_positions - 1) * DARI_SPACING if _eff_positions > 1 else 0
 
     if _dari_needed > _dari_available and _eff_positions > 1:
@@ -323,7 +377,7 @@ def _draw_panel(c, data, x_offset, offset_x, offset_y, bulan=0, hari=0, tahun=0)
     _draw_vertical_chars(
         c, dari_text,
         x_pt=DARI_X + x_offset,
-        y_start_pt=DARI_Y_START,
+        y_start_pt=dari_y_start,
         spacing_pt=dari_spacing,
         offset_x_pt=offset_x,
         offset_y_pt=offset_y,
@@ -335,12 +389,24 @@ def _draw_panel(c, data, x_offset, offset_x, offset_y, bulan=0, hari=0, tahun=0)
 
     # --- 3. Kolom Panggilan + Nama Mandarin (vertikal) ---
     mendiang_text = panggilan + nama_mandarin
-    c.setFont(FONT_NAME, FONT_MAIN)
+    _mendiang_n = len(mendiang_text)
+    _mendiang_available = mendiang_y_start - mendiang_y_bottom
+    _mendiang_needed = (_mendiang_n - 1) * MENDIANG_SPACING if _mendiang_n > 1 else 0
+
+    if _mendiang_needed > _mendiang_available and _mendiang_n > 1:
+        mendiang_spacing = _mendiang_available / (_mendiang_n - 1)
+        mendiang_font = FONT_MAIN * (mendiang_spacing / MENDIANG_SPACING)
+        mendiang_font = max(mendiang_font, 12.0)
+    else:
+        mendiang_spacing = MENDIANG_SPACING
+        mendiang_font = FONT_MAIN
+
+    c.setFont(FONT_NAME, mendiang_font)
     _draw_vertical_chars(
         c, mendiang_text,
         x_pt=MENDIANG_X + x_offset,
-        y_start_pt=MENDIANG_Y_START,
-        spacing_pt=MENDIANG_SPACING,
+        y_start_pt=mendiang_y_start,
+        spacing_pt=mendiang_spacing,
         offset_x_pt=offset_x,
         offset_y_pt=offset_y,
     )
@@ -355,7 +421,7 @@ def _draw_panel(c, data, x_offset, offset_x, offset_y, bulan=0, hari=0, tahun=0)
         c.setFont(FONT_NAME, FONT_KELUARGA)
         c.drawString(
             KELUARGA_X + x_offset + offset_x,
-            KELUARGA_Y + offset_y,
+            keluarga_y + offset_y,
             short_keluarga,
         )
 
@@ -364,7 +430,7 @@ def _draw_panel(c, data, x_offset, offset_x, offset_y, bulan=0, hari=0, tahun=0)
     # agar hanya zodiak dinamis kita yang terlihat.
     _zx = ZODIAC_X + x_offset + offset_x
     _zw = FONT_DATE + 2          # lebar cukup untuk 1 karakter besar
-    for _zy in (ZODIAC_STEM_Y, ZODIAC_BRANCH_Y):
+    for _zy in (zodiac_stem_y, zodiac_branch_y):
         c.saveState()
         c.setFillColorRGB(1, 1, 1)   # putih
         c.setStrokeColorRGB(1, 1, 1)
@@ -372,15 +438,15 @@ def _draw_panel(c, data, x_offset, offset_x, offset_y, bulan=0, hari=0, tahun=0)
         c.restoreState()
 
     stem, branch = _get_zodiac_year(tahun if tahun else None)
-    c.setFont(FONT_NAME, FONT_ZODIAC)
+    c.setFont(FONT_NAME, font_zodiac)
     c.drawString(
         ZODIAC_X + x_offset + offset_x,
-        ZODIAC_STEM_Y + offset_y,
+        zodiac_stem_y + offset_y,
         stem,
     )
     c.drawString(
         ZODIAC_X + x_offset + offset_x,
-        ZODIAC_BRANCH_Y + offset_y,
+        zodiac_branch_y + offset_y,
         branch,
     )
 
@@ -389,14 +455,15 @@ def _draw_panel(c, data, x_offset, offset_x, offset_y, bulan=0, hari=0, tahun=0)
         month_text = _month_to_chinese(bulan)
         n = len(month_text)
         # Pusat vertikal antara 年 dan 月 (koreksi baseline: +font/3)
-        gap_center = (YEAR_LABEL_Y + MONTH_LABEL_Y) / 2 + FONT_DATE_NUM / 3
-        y_start = gap_center + (n - 1) * DATE_NUM_SPACING / 2
-        c.setFont(FONT_NAME, FONT_DATE_NUM)
+        date_x_offset = (FONT_DATE - font_date_num) / 2
+        gap_center = (year_label_y + month_label_y) / 2 + font_date_num / 3
+        y_start = gap_center + (n - 1) * date_num_spacing / 2
+        c.setFont(FONT_NAME, font_date_num)
         _draw_vertical_chars(
             c, month_text,
-            x_pt=DATE_X + DATE_NUM_X_OFFSET + x_offset,
+            x_pt=DATE_X + date_x_offset + x_offset,
             y_start_pt=y_start,
-            spacing_pt=DATE_NUM_SPACING,
+            spacing_pt=date_num_spacing,
             offset_x_pt=offset_x,
             offset_y_pt=offset_y,
         )
@@ -406,14 +473,15 @@ def _draw_panel(c, data, x_offset, offset_x, offset_y, bulan=0, hari=0, tahun=0)
         day_text = _day_to_chinese(hari)
         n = len(day_text)
         # Pusat vertikal antara 月 dan 日 (koreksi baseline: +font/3)
-        gap_center = (MONTH_LABEL_Y + DAY_LABEL_Y) / 2 + FONT_DATE_NUM / 3
-        y_start = gap_center + (n - 1) * DATE_NUM_SPACING / 2
-        c.setFont(FONT_NAME, FONT_DATE_NUM)
+        date_x_offset = (FONT_DATE - font_date_num) / 2
+        gap_center = (month_label_y + day_label_y) / 2 + font_date_num / 3
+        y_start = gap_center + (n - 1) * date_num_spacing / 2
+        c.setFont(FONT_NAME, font_date_num)
         _draw_vertical_chars(
             c, day_text,
-            x_pt=DATE_X + DATE_NUM_X_OFFSET + x_offset,
+            x_pt=DATE_X + date_x_offset + x_offset,
             y_start_pt=y_start,
-            spacing_pt=DATE_NUM_SPACING,
+            spacing_pt=date_num_spacing,
             offset_x_pt=offset_x,
             offset_y_pt=offset_y,
         )
@@ -506,6 +574,7 @@ def generate_pdf_bytes(
     bulan=0,
     hari=0,
     tahun=0,
+    template=1,
 ):
     """Menghasilkan PDF dual-panel sebagai bytes (in-memory).
 
@@ -519,6 +588,7 @@ def generate_pdf_bytes(
         bulan: Bulan (1-12), 0 = tidak cetak angka bulan.
         hari: Hari (1-30), 0 = tidak cetak angka hari.
         tahun: Tahun Masehi untuk zodiak. 0 = tahun sekarang.
+        template: 1 = label.pdf (default), 2 = label_v2.pdf.
 
     Returns:
         bytes: Data PDF dalam bytes.
@@ -537,23 +607,26 @@ def generate_pdf_bytes(
         )
 
         _draw_panel(c, data, x_offset=0.0, offset_x=ox_pt, offset_y=oy_pt,
-                    bulan=bulan, hari=hari, tahun=tahun)
+                    bulan=bulan, hari=hari, tahun=tahun, template=template)
         _draw_panel(
             c, data, x_offset=PANEL_OFFSET,
             offset_x=ox_pt, offset_y=oy_pt,
-            bulan=bulan, hari=hari, tahun=tahun,
+            bulan=bulan, hari=hari, tahun=tahun, template=template,
         )
 
         c.showPage()
         c.save()
+
+        # Pilih template berdasarkan parameter
+        tpl_path = _TEMPLATE_V2_PATH if template == 2 else _TEMPLATE_PATH
 
         # Merge template + overlay di memori
         overlay_buf.seek(0)
         overlay_reader = PdfReader(overlay_buf)
         overlay_page = overlay_reader.pages[0]
 
-        if os.path.isfile(_TEMPLATE_PATH):
-            template_reader = PdfReader(_TEMPLATE_PATH)
+        if os.path.isfile(tpl_path):
+            template_reader = PdfReader(tpl_path)
             base_page = template_reader.pages[0]
             base_page.merge_page(overlay_page)
             writer = PdfWriter()

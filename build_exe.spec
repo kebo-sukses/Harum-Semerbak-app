@@ -23,6 +23,7 @@ a = Analysis(
     datas=[
         # Assets aplikasi
         (os.path.join('assets', 'label.pdf'), 'assets'),
+        (os.path.join('assets', 'label_v2.pdf'), 'assets'),
         (os.path.join('assets', 'fonts', 'HanyiSentyPagoda.ttf'), os.path.join('assets', 'fonts')),
         # Modul internal
         (os.path.join('database', '__init__.py'), 'database'),
